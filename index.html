@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>残値両替システム</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>💰 残値両替システム</h1>
+            <p>レジ間の現金を最適化し、効率的な両替手順を提示します</p>
+        </div>
+        
+        <div class="main-content">
+            <div class="register-section register-422">
+                <div class="register-header">
+                    <span class="register-title">📦 422レジ</span>
+                    <span class="total-amount" id="total-422">合計: ¥0</span>
+                </div>
+                
+                <div class="denomination-group">
+                    <h3>紙幣</h3>
+                    <div class="denomination-row">
+                        <span class="denomination-label">¥10,000</span>
+                        <div class="input-group">
+                            <div class="input-wrapper">
+                                <input type="number" id="reg422-bills-10000" min="0" value="0">
+                                <span>枚</span>
+                            </div>
+                        </div>
+                        <span class="subtotal" id="subtotal-422-10000">¥0</span>
+                    </div>
+                    <div class="denomination-row">
+                        <span class="denomination-label">¥5,000</span>
+                        <div class="input-group">
+                            <div class="input-wrapper">
+                                <input type="number" id="reg422-bills-5000" min="0" value="20">
+                                <span>枚</span>
+                            </div>
+                        </div>
+                        <span class="subtotal" id="subtotal-422-5000">¥0</span>
+                    </div>
+                    <div class="denomination-row">
+                        <span class="denomination-label">¥1,000</span>
+                        <div class="input-group">
+                            <div class="input-wrapper">
+                                <input type="number" id="reg422-bills-1000" min="0" value="40">
+                                <span>枚</span>
+                            </div>
+                        </div>
+                        <span class="subtotal" id="subtotal-422-1000">¥0</span>
+                    </div>
+                </div>
+                
+                <div class="denomination-group">
+                    <h3>硬貨（バラ）</h3>
+                    <div class="denomination-row">
+                        <span class="denomination-label">¥500</span>
+                        <div class="input-group">
+                            <div class="input-wrapper">
+                                <input type="number" id="reg422-coins-500" min="0" value="50">
+                                <span>枚</span>
+                            </div>
+                        </div>
+                        <span class="subtotal" id="subtotal-422-coins-500">¥0</span>
+                    </div>
+                    <div class="denomination-row">
+                        <span class="denomination-label">¥100</span>
+                        <div class="input-group">
+                            <div class="input-wrapper">
+                                <input type="number" id="reg422-coins-100" min="0" value="50">
+                                <span>枚</span>
+                            </div>
+                        </div>
+                        <span class="subtotal" id="subtotal-422-coins-100">¥0</span>
+                    </div>
+                    <div class="denomination-row">
+                        <span class="denomination-label">¥50</span>
+                        <div class="input-group">
+                            <div class="input-wrapper">
+                                <input type="number" id="reg422-coins-50" min="0" value="50">
+                                <span>枚</span>
+                            </div>
+                        </div>
+                        <span class="subtotal" id="subtotal-422-coins-50">¥0</span>
+                    </div>
+                    <div class="denomination-row">
+                        <span class="denomination-label">¥10</span>
+                        <div class="input-group">
+                            <div class="input-wrapper">
+                                <input type="number" id="reg422-coins-10" min="0" value="50">
+                                <span>枚</span>
+                            </div>
+                        </div>
+                        <span class="subtotal" id="subtotal-422-coins-10">¥0</span>
+                    </div>
+                    <div class="denomination-row">
+                        <span class="denomination-label">¥5</span>
+                        <div class="input-group">
+                            <div class="input-wrapper">
+                                <input type="number" id="reg422-coins-5" min="0" value="50">
+                                <span>枚</span>
+                            </div>
+                        </div>
+                        <span class="subtotal" id="subtotal-422-coins-5">¥0</span>
+                    </div>
+                    <div class="denomination-row">
+                        <span class="denomination-label">¥1</span>
+                        <div class="input-group">
+                            <div class="input-wrapper">
+                                <input type="number" id="reg422-coins-1" min="0" value="50">
+                                <span>枚</span>
+                            </div>
+                        </div>
+                        <span class="subtotal" id="subtotal-422-coins-1">¥0</span>
+                    </div>
+                </div>
+                
+                <div class="rolls-section">
+                    <h4>🗞️ 棒金（422レジのみ）</h4>
+                    <div class="denomination-row">
+                        <span class="denomination-label">¥500棒金</span>
+                        <div class="input-group">
+                            <div class="input-wrapper">
+                                <input type="number" id="reg422-rolls-500" min="0" value="1">
+                                <span>本</span>
+                            </div>
+                        </div>
+                        <span class="subtotal" id="subtotal-422-rolls-500">¥0</span>
+                    </div>
+                    <div class="denomination-row">
+                        <span class="denomination-label">¥100棒金</span>
+                        <div class="input-group">
+                            <div class="input-wrapper">
+                                <input type="number" id="reg422-rolls-100" min="0" value="4">
+                                <span>本</span>
+                            </div>
+                        </div>
+                        <span class="subtotal" id="subtotal-422-rolls-100">¥0</span>
+                    </div>
+                    <div class="denomination-row">
+                        <span class="denomination-label">¥50棒金</span>
+                        <div class="input-group">
+                            <div class="input-wrapper">
+                                <input type="number" id="reg422-rolls-50" min="0" value="1">
+                                <span>本</span>
+                            </div>
+                        </div>
+                        <span class="subtotal" id="subtotal-422-rolls-50">¥0</span>
+                    </div>
+                    <div class="denomination-row">
+                        <span class="denomination-label">¥10棒金</span>
+                        <div class="input-group">
+                            <div class="input-wrapper">
+                                <input type="number" id="reg422-rolls-10" min="0" value="4">
+                                <span>本</span>
+                            </div>
+                        </div>
+                        <span class="subtotal" id="subtotal-422-rolls-10">¥0</span>
+                    </div>
+                    <div class="denomination-row">
+                        <span class="denomination-label">¥5棒金</span>
+                        <div class="input-group">
+                            <div class="input-wrapper">
+                                <input type="number" id="reg422-rolls-5" min="0" value="1">
+                                <span>本</span>
+                            </div>
+                        </div>
+                        <span class="subtotal" id="subtotal-422-rolls-5">¥0</span>
+                    </div>
+                    <div class="denomination-row">
+                        <span class="denomination-label">¥1棒金</span>
+                        <div class="input-group">
+                            <div class="input-wrapper">
+                                <input type="number" id="reg422-rolls-1" min="0" value="4">
+                                <span>本</span>
+                            </div>
+                        </div>
+                        <span class="subtotal" id="subtotal-422-rolls-1">¥0</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="register-section register-423">
+                <div class="register-header">
+                    <span class="register-title">🏪 423レジ</span>
+                    <span class="total-amount" id="total-423">合計: ¥0</span>
+                </div>
+                
+                <div class="denomination-group">
+                    <h3>紙幣</h3>
+                    <div class="denomination-row">
+                        <span class="denomination-label">¥10,000</span>
+                        <div class="input-group">
+                            <div class="input-wrapper">
+                                <input type="number" id="reg423-bills-10000" min="0" value="0">
+                                <span>枚</span>
+                            </div>
+                        </div>
+                        <span class="subtotal" id="subtotal-423-10000">¥0</span>
+                    </div>
+                    <div class="denomination-row">
+                        <span class="denomination-label">¥5,000</span>
+                        <div class="input-group">
+                            <div class="input-wrapper">
+                                <input type="number" id="reg423-bills-5000" min="0" value="20">
+                                <span>枚</span>
+                            </div>
+                        </div>
+                        <span class="subtotal" id="subtotal-423-5000">¥0</span>
+                    </div>
+                    <div class="denomination-row">
+                        <span class="denomination-label">¥1,000</span>
+                        <div class="input-group">
+                            <div class="input-wrapper">
+                                <input type="number" id="reg423-bills-1000" min="0" value="40">
+                                <span>枚</span>
+                            </div>
+                        </div>
+                        <span class="subtotal" id="subtotal-423-1000">¥0</span>
+                    </div>
+                </div>
+                
+                <div class="denomination-group">
+                    <h3>硬貨（バラ）</h3>
+                    <div class="denomination-row">
+                        <span class="denomination-label">¥500</span>
+                        <div class="input-group">
+                            <div class="input-wrapper">
+                                <input type="number" id="reg423-coins-500" min="0" value="50">
+                                <span>枚</span>
+                            </div>
+                        </div>
+                        <span class="subtotal" id="subtotal-423-coins-500">¥0</span>
+                    </div>
+                    <div class="denomination-row">
+                        <span class="denomination-label">¥100</span>
+                        <div class="input-group">
+                            <div class="input-wrapper">
+                                <input type="number" id="reg423-coins-100" min="0" value="50">
+                                <span>枚</span>
+                            </div>
+                        </div>
+                        <span class="subtotal" id="subtotal-423-coins-100">¥0</span>
+                    </div>
+                    <div class="denomination-row">
+                        <span class="denomination-label">¥50</span>
+                        <div class="input-group">
+                            <div class="input-wrapper">
+                                <input type="number" id="reg423-coins-50" min="0" value="50">
+                                <span>枚</span>
+                            </div>
+                        </div>
+                        <span class="subtotal" id="subtotal-423-coins-50">¥0</span>
+                    </div>
+                    <div class="denomination-row">
+                        <span class="denomination-label">¥10</span>
+                        <div class="input-group">
+                            <div class="input-wrapper">
+                                <input type="number" id="reg423-coins-10" min="0" value="50">
+                                <span>枚</span>
+                            </div>
+                        </div>
+                        <span class="subtotal" id="subtotal-423-coins-10">¥0</span>
+                    </div>
+                    <div class="denomination-row">
+                        <span class="denomination-label">¥5</span>
+                        <div class="input-group">
+                            <div class="input-wrapper">
+                                <input type="number" id="reg423-coins-5" min="0" value="50">
+                                <span>枚</span>
+                            </div>
+                        </div>
+                        <span class="subtotal" id="subtotal-423-coins-5">¥0</span>
+                    </div>
+                    <div class="denomination-row">
+                        <span class="denomination-label">¥1</span>
+                        <div class="input-group">
+                            <div class="input-wrapper">
+                                <input type="number" id="reg423-coins-1" min="0" value="50">
+                                <span>枚</span>
+                            </div>
+                        </div>
+                        <span class="subtotal" id="subtotal-423-coins-1">¥0</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="control-panel">
+                <div class="targets-info">
+                    <div class="target-item">
+                        <span class="target-label">📊 422レジ目標:</span>
+                        <span class="target-value">¥83,250以上</span>
+                    </div>
+                    <div class="target-item">
+                        <span class="target-label">📊 423レジ目標:</span>
+                        <span class="target-value">¥33,300以上</span>
+                    </div>
+                    <div class="target-item">
+                        <span class="target-label">🎯 硬貨パーレベル:</span>
+                        <span class="target-value">50枚以上</span>
+                    </div>
+                    <div class="target-item">
+                        <span class="target-label">🎯 千円札パーレベル:</span>
+                        <span class="target-value">40枚以上</span>
+                    </div>
+                </div>
+                
+                <div class="button-group">
+                    <button class="btn-optimize" onclick="optimizeCash()">
+                        🚀 最適化を実行
+                    </button>
+                    <button class="btn-reset" onclick="resetAll()">
+                        🔄 リセット
+                    </button>
+                </div>
+                
+                <div id="result-area" class="result-area" style="display: none;">
+                    <h2>📋 両替手順</h2>
+                    <div id="steps-container"></div>
+                    <div id="summary-container" class="summary"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="script.js"></script>
+</body>
+</html>
