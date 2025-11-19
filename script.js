@@ -155,13 +155,25 @@ class CashExchangeOptimizer {
         return this.exchangeSteps;
     }
 
-    // 423レジの硬貨不足と余剰を分析
+    // 423レジの硬貨・紙幣不足と余剰を分析
     analyze423Register() {
         const coinDenoms = [500, 100, 50, 10, 5, 1];
         const shortages = {};
         let totalShortage = 0;
 
-        // 1. 不足している硬貨と枚数を特定
+        // 1. 不足している紙幣と枚数を特定
+        if (this.reg423.bills5000 < TARGET_5000) {
+            const shortage = TARGET_5000 - this.reg423.bills5000;
+            shortages[5000] = shortage;
+            totalShortage += shortage * 5000;
+        }
+        if (this.reg423.bills1000 < TARGET_1000) {
+            const shortage = TARGET_1000 - this.reg423.bills1000;
+            shortages[1000] = shortage;
+            totalShortage += shortage * 1000;
+        }
+
+        // 2. 不足している硬貨と枚数を特定
         for (const denom of coinDenoms) {
             const current = this.reg423.getCoinCount(denom);
             if (current < TARGET_COINS) {
@@ -176,7 +188,7 @@ class CashExchangeOptimizer {
             this.exchangeSteps.push({
                 step: 1,
                 action: '✅ 両替不要',
-                details: '423レジの硬貨は全てパーレベル（50枚）以上です。',
+                details: '423レジの硬貨・紙幣は全て目標レベル以上です。',
                 total: null
             });
             return { hasError: true };
@@ -276,6 +288,33 @@ class CashExchangeOptimizer {
         let totalShortage = 0;
         let totalSurplus = 0;
 
+        // 紙幣の在庫と余剰を確認
+        inventory[10000] = this.reg422.bills10000;
+        inventory[5000] = this.reg422.bills5000;
+        inventory[1000] = this.reg422.bills1000;
+
+        // 5000円札の余剰確認（最低保有枚数を考慮）
+        if (this.reg422.bills5000 > MIN_HOLD_5000) {
+            const surplus = this.reg422.bills5000 - MIN_HOLD_5000;
+            surpluses[5000] = {
+                surplus: surplus,
+                current: this.reg422.bills5000,
+                detail: `現在${this.reg422.bills5000}枚 (最低保有${MIN_HOLD_5000}枚)`
+            };
+            totalSurplus += surplus * 5000;
+        }
+
+        // 1000円札の余剰確認（最低保有枚数を考慮）
+        if (this.reg422.bills1000 > MIN_HOLD_1000) {
+            const surplus = this.reg422.bills1000 - MIN_HOLD_1000;
+            surpluses[1000] = {
+                surplus: surplus,
+                current: this.reg422.bills1000,
+                detail: `現在${this.reg422.bills1000}枚 (最低保有${MIN_HOLD_1000}枚)`
+            };
+            totalSurplus += surplus * 1000;
+        }
+
         // 各硬貨の不足と余剰を確認（棒金を含む）
         for (const denom of coinDenoms) {
             const coins = this.reg422.getCoinCount(denom);
@@ -339,7 +378,7 @@ class CashExchangeOptimizer {
             this.exchangeSteps.push({
                 step: this.exchangeSteps.length + 1,
                 action: '✅ 422レジ 確認完了',
-                details: '422レジの硬貨は全てパーレベル（50枚）です。',
+                details: '422レジの硬貨・紙幣は全て目標レベルです。',
                 total: null
             });
         }
@@ -358,16 +397,8 @@ class CashExchangeOptimizer {
         let iteration = 0;
         const MAX_ITERATIONS = 10;
 
-        // 紙幣を含めた423レジの不足を計算
+        // 423レジの不足金種（紙幣と硬貨の両方を含む）
         const shortages423All = { ...result423.shortages };
-
-        // 紙幣の不足も確認
-        if (this.reg423.bills1000 < TARGET_1000) {
-            shortages423All[1000] = TARGET_1000 - this.reg423.bills1000;
-        }
-        if (this.reg423.bills5000 < TARGET_5000) {
-            shortages423All[5000] = TARGET_5000 - this.reg423.bills5000;
-        }
 
         // 反復ループ開始
         while (iteration < MAX_ITERATIONS) {
