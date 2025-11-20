@@ -400,6 +400,9 @@ class CashExchangeOptimizer {
         // 423レジの不足金種（紙幣と硬貨の両方を含む）
         const shortages423All = { ...result423.shortages };
 
+        // 最終的なLBを保存
+        let finalLB = {};
+
         // 反復ループ開始
         while (iteration < MAX_ITERATIONS) {
             iteration++;
@@ -476,17 +479,25 @@ class CashExchangeOptimizer {
                         total: totalLB,
                         info: `LB合計: ¥${totalLB.toLocaleString()}`
                     });
+
+                    // 最終的なLBを保存
+                    finalLB = { ...LB };
                 }
             }
 
-            // LAが空の場合は終了
+            // LAが空の場合
             if (Object.keys(LA).length === 0 || totalLA === 0) {
-                this.exchangeSteps.push({
-                    step: this.exchangeSteps.length + 1,
-                    action: '⚠️ 終了',
-                    details: '422レジで補える金種がありません。全て両替機での対応が必要です。',
-                    total: null
-                });
+                // LBのみがある場合は両替機処理を実行
+                if (Object.keys(finalLB).length > 0) {
+                    this.processExchangeMachine(finalLB);
+                } else {
+                    this.exchangeSteps.push({
+                        step: this.exchangeSteps.length + 1,
+                        action: '⚠️ 終了',
+                        details: '422レジで補える金種がありません。全て両替機での対応が必要です。',
+                        total: null
+                    });
+                }
                 result423.combination = null;
                 return;
             }
@@ -556,13 +567,19 @@ class CashExchangeOptimizer {
             if (canSupply) {
                 this.exchangeSteps.push({
                     step: this.exchangeSteps.length + 1,
-                    action: '✅ 出金額確定',
+                    action: '✅ 出金額確定（LA分）',
                     details: combination.breakdown,
                     total: combination.amount,
                     info: `出金枚数: ${combination.totalCoins}枚（統一探索ロジックにより決定）`
                 });
                 result423.combination = combination;
                 result423.totalShortage = totalLA;
+
+                // LBがある場合は両替機処理を実行
+                if (Object.keys(finalLB).length > 0) {
+                    this.processExchangeMachine(finalLB);
+                }
+
                 return;
             }
 
@@ -605,6 +622,132 @@ class CashExchangeOptimizer {
             total: null
         });
         result423.combination = null;
+    }
+
+    // 両替機を使用してLB金種を両替
+    processExchangeMachine(LB) {
+        if (!LB || Object.keys(LB).length === 0) {
+            return;
+        }
+
+        // LB金種を棒金に調整
+        const adjustedLB = {};
+        let totalLB = 0;
+
+        // 100円未満の硬貨を棒金に調整
+        const smallCoins = [50, 10, 5, 1];
+        let smallCoinTotal = 0;
+
+        for (const denom of smallCoins) {
+            if (LB[denom]) {
+                adjustedLB[denom] = 50; // 棒金1本 = 50枚
+                smallCoinTotal += 50 * denom;
+            }
+        }
+
+        // 100円の倍数チェック（50円余るかどうか）
+        if (smallCoinTotal % 100 !== 0) {
+            // 50円余る場合、1円を2本(100枚)に変更
+            if (adjustedLB[1]) {
+                adjustedLB[1] = 100; // 1円を2本
+                smallCoinTotal += 50; // 50円追加
+            }
+        }
+
+        // 100円以上の金種はそのまま
+        if (LB[500]) {
+            adjustedLB[500] = LB[500];
+            totalLB += LB[500] * 500;
+        }
+        if (LB[100]) {
+            adjustedLB[100] = LB[100];
+            totalLB += LB[100] * 100;
+        }
+        if (LB[1000]) {
+            adjustedLB[1000] = LB[1000];
+            totalLB += LB[1000] * 1000;
+        }
+        if (LB[5000]) {
+            adjustedLB[5000] = LB[5000];
+            totalLB += LB[5000] * 5000;
+        }
+
+        totalLB += smallCoinTotal;
+
+        // 10000円単位に切り上げ
+        const withdrawalAmount = Math.ceil(totalLB / 10000) * 10000;
+
+        // 10000円札の在庫確認
+        const bills10000Needed = withdrawalAmount / 10000;
+        if (this.reg423.bills10000 < bills10000Needed) {
+            this.exchangeSteps.push({
+                step: this.exchangeSteps.length + 1,
+                action: '❌ エラー',
+                details: `10000円札が不足しています。必要: ${bills10000Needed}枚、在庫: ${this.reg423.bills10000}枚`,
+                total: null
+            });
+            return;
+        }
+
+        // おつり計算
+        const changeAmount = withdrawalAmount - totalLB;
+        const change = this.calculateChange(changeAmount);
+
+        // 両替機からの出金内訳（LB + おつり）
+        const machineWithdrawal = { ...adjustedLB };
+        for (const [denom, count] of Object.entries(change)) {
+            machineWithdrawal[denom] = (machineWithdrawal[denom] || 0) + count;
+        }
+
+        // 手順を表示
+        this.exchangeSteps.push({
+            step: this.exchangeSteps.length + 1,
+            action: '💵 423レジから出金（両替機用）',
+            details: { 10000: bills10000Needed },
+            total: withdrawalAmount,
+            info: `10000円札 ${bills10000Needed}枚を出金`
+        });
+
+        this.exchangeSteps.push({
+            step: this.exchangeSteps.length + 1,
+            action: '🏧 両替機へ入金',
+            details: { 10000: bills10000Needed },
+            total: withdrawalAmount,
+            info: `両替機に ${withdrawalAmount.toLocaleString()}円を入金`
+        });
+
+        this.exchangeSteps.push({
+            step: this.exchangeSteps.length + 1,
+            action: '🏧 両替機から出金',
+            details: machineWithdrawal,
+            total: withdrawalAmount,
+            info: `LB金種 ¥${totalLB.toLocaleString()} + おつり ¥${changeAmount.toLocaleString()}`
+        });
+
+        this.exchangeSteps.push({
+            step: this.exchangeSteps.length + 1,
+            action: '💰 423レジへ入金',
+            details: machineWithdrawal,
+            total: withdrawalAmount,
+            info: `両替機からの出金を423レジへ入金`
+        });
+    }
+
+    // おつりを計算（5000円以下、大きい額面優先）
+    calculateChange(amount) {
+        const change = {};
+        let remaining = amount;
+        const denoms = [5000, 1000, 500, 100];
+
+        for (const denom of denoms) {
+            if (remaining >= denom) {
+                const count = Math.floor(remaining / denom);
+                change[denom] = count;
+                remaining -= count * denom;
+            }
+        }
+
+        return change;
     }
 
     // 統一探索ロジック (Unified Search Logic / U.S.L.)
