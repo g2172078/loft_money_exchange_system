@@ -140,6 +140,22 @@ class CashExchangeOptimizer {
         this.reg422 = reg422.clone();
         this.reg423 = reg423.clone();
         this.exchangeSteps = [];
+
+        // 初期在高を保存
+        this.initialReg422 = reg422.clone();
+        this.initialReg423 = reg423.clone();
+
+        // 出金・入金の追跡
+        this.reg422Withdrawals = 0;  // 422レジからの出金総額
+        this.reg422Deposits = 0;      // 422レジへの入金総額
+        this.reg423Withdrawals = 0;  // 423レジからの出金総額
+        this.reg423Deposits = 0;      // 423レジへの入金総額
+
+        // 金種別の出金・入金追跡
+        this.reg422WithdrawalsByDenom = {};
+        this.reg422DepositsByDenom = {};
+        this.reg423WithdrawalsByDenom = {};
+        this.reg423DepositsByDenom = {};
     }
 
     optimize() {
@@ -165,6 +181,32 @@ class CashExchangeOptimizer {
         // executeWithdrawal423() の呼び出しは削除（重複出金を防ぐため）
 
         return this.exchangeSteps;
+    }
+
+    // 出金を追跡（金種別）
+    trackWithdrawal(register, details) {
+        const trackingMap = register === 422 ? this.reg422WithdrawalsByDenom : this.reg423WithdrawalsByDenom;
+
+        for (const [denom, count] of Object.entries(details)) {
+            const denomNum = parseInt(denom);
+            if (!trackingMap[denomNum]) {
+                trackingMap[denomNum] = 0;
+            }
+            trackingMap[denomNum] += count;
+        }
+    }
+
+    // 入金を追跡（金種別）
+    trackDeposit(register, details) {
+        const trackingMap = register === 422 ? this.reg422DepositsByDenom : this.reg423DepositsByDenom;
+
+        for (const [denom, count] of Object.entries(details)) {
+            const denomNum = parseInt(denom);
+            if (!trackingMap[denomNum]) {
+                trackingMap[denomNum] = 0;
+            }
+            trackingMap[denomNum] += count;
+        }
     }
 
     // 423レジの硬貨・紙幣不足と余剰を分析
@@ -529,7 +571,7 @@ class CashExchangeOptimizer {
                     }
 
                     // 423レジの両替機処理を実行
-                    this.processExchangeMachine(finalLB);
+                    this.processExchangeMachine(finalLB, lbResult.withdrawalAmount);
                 } else {
                     this.exchangeSteps.push({
                         step: this.exchangeSteps.length + 1,
@@ -622,6 +664,7 @@ class CashExchangeOptimizer {
                 // 1. 423レジからLA+LB出金（紙幣のみ）
                 const combinedWithdrawal = { ...combination.breakdown };
                 let combinedTotal = combination.amount;
+                let lbWithdrawalAmount = 0; // LB用に423レジから出金した金額を保存
 
                 // LBがある場合は一緒に出金額を計算
                 if (Object.keys(finalLB).length > 0) {
@@ -645,41 +688,54 @@ class CashExchangeOptimizer {
                         combinedWithdrawal[10000] = lbResult.bills10000Needed;
                     }
                     combinedTotal += lbResult.withdrawalAmount;
+                    lbWithdrawalAmount = lbResult.withdrawalAmount; // 保存
                 }
 
+                this.reg423Withdrawals += combinedTotal;
+                this.trackWithdrawal(423, combinedWithdrawal);
                 this.exchangeSteps.push({
                     step: this.exchangeSteps.length + 1,
                     action: '✅ 423レジから出金（LA + LB分）',
                     details: combinedWithdrawal,
                     total: combinedTotal,
-                    info: `LA: ¥${combination.amount.toLocaleString()}, LB: ¥${(combinedTotal - combination.amount).toLocaleString()}`
+                    info: `LA: ¥${combination.amount.toLocaleString()}, LB: ¥${(combinedTotal - combination.amount).toLocaleString()}`,
+                    isUserAction: true
                 });
 
                 // 2. LAを422レジへ入金指示
+                this.reg422Deposits += combination.amount;
+                this.trackDeposit(422, combination.breakdown);
                 this.exchangeSteps.push({
                     step: this.exchangeSteps.length + 1,
                     action: '📥 LAを422レジへ入金指示',
                     details: combination.breakdown,
                     total: combination.amount,
-                    info: `LA分（¥${combination.amount.toLocaleString()}）を422レジへ`
+                    info: `LA分（¥${combination.amount.toLocaleString()}）を422レジへ`,
+                    isUserAction: true
                 });
 
                 // 3. 422レジからLA出金指示
+                this.reg422Withdrawals += totalLA;
+                this.trackWithdrawal(422, LA);
                 this.exchangeSteps.push({
                     step: this.exchangeSteps.length + 1,
                     action: '📤 422レジからLA出金指示',
                     details: LA,
                     total: totalLA,
-                    info: `423レジの不足金種（LA: ¥${totalLA.toLocaleString()}）を422レジから出金`
+                    info: `423レジの不足金種（LA: ¥${totalLA.toLocaleString()}）を422レジから出金`,
+                    isUserAction: true
                 });
 
                 // 4. 423レジへLA入金指示
+                this.reg423Deposits += totalLA;
+                this.trackDeposit(423, LA);
                 this.exchangeSteps.push({
                     step: this.exchangeSteps.length + 1,
                     action: '💰 423レジへLA入金',
                     details: LA,
                     total: totalLA,
-                    info: `422レジから出金したLA分を423レジへ入金`
+                    info: `422レジから出金したLA分を423レジへ入金`,
+                    isUserAction: true
                 });
 
                 // 423への供給後、422の不足情報を表示
@@ -728,7 +784,7 @@ class CashExchangeOptimizer {
 
                 // 8. LBがある場合は423レジの両替機処理を実行
                 if (Object.keys(finalLB).length > 0) {
-                    this.processExchangeMachine(finalLB);
+                    this.processExchangeMachine(finalLB, lbWithdrawalAmount);
                 }
 
                 result423.combination = combination;
@@ -1144,12 +1200,15 @@ class CashExchangeOptimizer {
         }
 
         // 手順を表示
+        this.reg422Withdrawals += withdrawalAmount;
+        this.trackWithdrawal(422, { 10000: bills10000Needed });
         this.exchangeSteps.push({
             step: this.exchangeSteps.length + 1,
             action: '💵 422レジから出金（両替機用 - LC）',
             details: { 10000: bills10000Needed },
             total: withdrawalAmount,
-            info: `10000円札 ${bills10000Needed}枚を出金`
+            info: `10000円札 ${bills10000Needed}枚を出金`,
+            isUserAction: true
         });
 
         this.exchangeSteps.push({
@@ -1157,7 +1216,8 @@ class CashExchangeOptimizer {
             action: '🏧 両替機へ入金（422レジ用）',
             details: { 10000: bills10000Needed },
             total: withdrawalAmount,
-            info: `両替機に ¥${withdrawalAmount.toLocaleString()}を入金`
+            info: `両替機に ¥${withdrawalAmount.toLocaleString()}を入金`,
+            isUserAction: true
         });
 
         this.exchangeSteps.push({
@@ -1165,20 +1225,25 @@ class CashExchangeOptimizer {
             action: '🏧 両替機から出金（422レジ用）',
             details: machineWithdrawal,
             total: withdrawalAmount,
-            info: `LC金種 ¥${adjustedTotal.toLocaleString()} + おつり ¥${changeAmount.toLocaleString()}`
+            info: `LC金種 ¥${adjustedTotal.toLocaleString()} + おつり ¥${changeAmount.toLocaleString()}`,
+            isUserAction: true
         });
 
+        this.reg422Deposits += withdrawalAmount;
+        this.trackDeposit(422, machineWithdrawal);
         this.exchangeSteps.push({
             step: this.exchangeSteps.length + 1,
             action: '💰 422レジへ入金',
             details: machineWithdrawal,
             total: withdrawalAmount,
-            info: `両替機からの出金を422レジへ入金`
+            info: `両替機からの出金を422レジへ入金`,
+            isUserAction: true
         });
     }
 
     // 両替機を使用してLB金種を両替（423レジ用）
-    processExchangeMachine(LB) {
+    // withdrawalAmount: 既に423レジから出金済みの金額（手順6で出金済み）
+    processExchangeMachine(LB, withdrawalAmount) {
         if (!LB || Object.keys(LB).length === 0) {
             return;
         }
@@ -1227,21 +1292,6 @@ class CashExchangeOptimizer {
 
         totalLB += smallCoinTotal;
 
-        // 10000円単位に切り上げ
-        const withdrawalAmount = Math.ceil(totalLB / 10000) * 10000;
-
-        // 10000円札の在庫確認
-        const bills10000Needed = withdrawalAmount / 10000;
-        if (this.reg423.bills10000 < bills10000Needed) {
-            this.exchangeSteps.push({
-                step: this.exchangeSteps.length + 1,
-                action: '❌ エラー',
-                details: `10000円札が不足しています。必要: ${bills10000Needed}枚、在庫: ${this.reg423.bills10000}枚`,
-                total: null
-            });
-            return;
-        }
-
         // おつり計算
         const changeAmount = withdrawalAmount - totalLB;
         const change = this.calculateChange(changeAmount);
@@ -1252,37 +1302,36 @@ class CashExchangeOptimizer {
             machineWithdrawal[denom] = (machineWithdrawal[denom] || 0) + count;
         }
 
-        // 手順を表示
+        // 手順を表示（423レジからの出金は手順6で既に完了しているため、両替機処理のみ）
+        const bills10000Needed = withdrawalAmount / 10000;
+
         this.exchangeSteps.push({
             step: this.exchangeSteps.length + 1,
-            action: '💵 423レジから出金（両替機用）',
+            action: '🏧 両替機へ入金（423レジ用）',
             details: { 10000: bills10000Needed },
             total: withdrawalAmount,
-            info: `10000円札 ${bills10000Needed}枚を出金`
+            info: `両替機に ${withdrawalAmount.toLocaleString()}円を入金`,
+            isUserAction: true
         });
 
         this.exchangeSteps.push({
             step: this.exchangeSteps.length + 1,
-            action: '🏧 両替機へ入金',
-            details: { 10000: bills10000Needed },
-            total: withdrawalAmount,
-            info: `両替機に ${withdrawalAmount.toLocaleString()}円を入金`
-        });
-
-        this.exchangeSteps.push({
-            step: this.exchangeSteps.length + 1,
-            action: '🏧 両替機から出金',
+            action: '🏧 両替機から出金（423レジ用）',
             details: machineWithdrawal,
             total: withdrawalAmount,
-            info: `LB金種 ¥${totalLB.toLocaleString()} + おつり ¥${changeAmount.toLocaleString()}`
+            info: `LB金種 ¥${totalLB.toLocaleString()} + おつり ¥${changeAmount.toLocaleString()}`,
+            isUserAction: true
         });
 
+        this.reg423Deposits += withdrawalAmount;
+        this.trackDeposit(423, machineWithdrawal);
         this.exchangeSteps.push({
             step: this.exchangeSteps.length + 1,
             action: '💰 423レジへ入金',
             details: machineWithdrawal,
             total: withdrawalAmount,
-            info: `両替機からの出金を423レジへ入金`
+            info: `両替機からの出金を423レジへ入金`,
+            isUserAction: true
         });
     }
 
@@ -1353,12 +1402,17 @@ class CashExchangeOptimizer {
         }
 
         // おつり返却手順を表示
+        this.reg422Withdrawals += changeAmount;
+        this.reg423Deposits += changeAmount;
+        this.trackWithdrawal(422, changeBreakdown);
+        this.trackDeposit(423, changeBreakdown);
         this.exchangeSteps.push({
             step: this.exchangeSteps.length + 1,
             action: '💴 422レジから423レジへおつり返却',
             details: changeBreakdown,
             total: changeAmount,
-            info: `LA出金額とLA不足額の差額を返却: ¥${changeAmount.toLocaleString()}`
+            info: `LA出金額とLA不足額の差額を返却: ¥${changeAmount.toLocaleString()}`,
+            isUserAction: true
         });
     }
 
@@ -1381,19 +1435,39 @@ class CashExchangeOptimizer {
             }
         }
 
-        // Step 2: 初期目標額と増額単位の特定
-        let target = Math.ceil(totalShortage / 1000) * 1000;
+        // Step 2: 余剰金種で作れる最小金額を探す
+        // 各金種の倍数で、totalShortage以上の最小値を候補とする
+        const candidates = [];
 
-        // 増額単位 (Increment) の決定：余剰在庫にある最小の紙幣
-        const billDenoms = [1000, 5000, 10000];
-        let increment = 1000; // デフォルト
+        for (const denom of denomsSorted) {
+            const available = surpluses[denom];
+            if (available > 0) {
+                // この金種だけで作れる最小金額(totalShortage以上)
+                const minAmount = Math.ceil(totalShortage / denom) * denom;
+                const needed = minAmount / denom;
 
-        for (const denom of billDenoms) {
-            if (surpluses[denom] && surpluses[denom] > 0) {
-                increment = denom;
-                break;
+                // 在庫が十分にあれば候補に追加
+                if (needed <= available) {
+                    candidates.push({ amount: minAmount, denom: denom });
+                }
             }
         }
+
+        // 候補の中から最小金額を選択
+        if (candidates.length > 0) {
+            candidates.sort((a, b) => a.amount - b.amount);
+            const best = candidates[0];
+
+            // 最小候補から貪欲法で試す
+            const combination = this.makeAmountGreedy(best.amount, surpluses);
+            if (combination) {
+                return combination;
+            }
+        }
+
+        // 候補がない場合は従来の方法
+        let target = Math.ceil(totalShortage / 1000) * 1000;
+        const increment = denomsSorted.length > 0 ? Math.min(...denomsSorted.filter(d => surpluses[d] > 0)) : 1000;
 
         // Step 3: ジャンプアップ調整ループ
         const maxTotalValue = this.getTotalValue(surpluses);
@@ -1580,14 +1654,14 @@ function optimizeCash() {
         const optimizer = new CashExchangeOptimizer(reg422, reg423);
         const steps = optimizer.optimize();
 
-        displayResults(steps, optimizer.reg422, optimizer.reg423);
+        displayResults(steps, optimizer);
 
         button.classList.remove('optimizing');
         button.disabled = false;
     }, 500);
 }
 
-function displayResults(steps, finalReg422, finalReg423) {
+function displayResults(steps, optimizer) {
     const resultArea = document.getElementById('result-area');
     const stepsContainer = document.getElementById('steps-container');
     const summaryContainer = document.getElementById('summary-container');
@@ -1597,7 +1671,8 @@ function displayResults(steps, finalReg422, finalReg423) {
 
     for (const step of steps) {
         const stepDiv = document.createElement('div');
-        stepDiv.className = 'step';
+        // 作業手順の場合は色を変える
+        stepDiv.className = step.isUserAction ? 'step step-action' : 'step';
 
         let detailsHtml = '';
         if (typeof step.details === 'object' && step.details !== null) {
@@ -1630,10 +1705,187 @@ function displayResults(steps, finalReg422, finalReg423) {
         stepsContainer.appendChild(stepDiv);
     }
 
-    // サマリーを非表示
-    summaryContainer.innerHTML = '';
+    // 出金・入金の総和と最終在高を表示
+    summaryContainer.innerHTML = generateSummary(optimizer);
 
     resultArea.style.display = 'block';
+}
+
+function generateSummary(optimizer) {
+    const reg422Diff = optimizer.reg422Deposits - optimizer.reg422Withdrawals;
+    const reg423Diff = optimizer.reg423Deposits - optimizer.reg423Withdrawals;
+
+    // 最終在高の計算（初期在高 + 入金 - 出金）
+    const finalBalances422 = calculateFinalBalance(
+        optimizer.initialReg422,
+        optimizer.reg422DepositsByDenom,
+        optimizer.reg422WithdrawalsByDenom
+    );
+    const finalBalances423 = calculateFinalBalance(
+        optimizer.initialReg423,
+        optimizer.reg423DepositsByDenom,
+        optimizer.reg423WithdrawalsByDenom
+    );
+
+    return `
+        <div class="transaction-summary">
+            <h4>💰 各レジの出金・入金総和</h4>
+            <div class="balance-grid">
+                <div>
+                    <h5>422レジ</h5>
+                    <div class="transaction-item">
+                        <span>出金総額:</span>
+                        <span>¥${optimizer.reg422Withdrawals.toLocaleString()}</span>
+                    </div>
+                    <div class="transaction-item">
+                        <span>入金総額:</span>
+                        <span>¥${optimizer.reg422Deposits.toLocaleString()}</span>
+                    </div>
+                    <div class="transaction-item">
+                        <span>差額:</span>
+                        <span class="${reg422Diff === 0 ? 'transaction-ok' : 'transaction-ng'}">
+                            ${reg422Diff >= 0 ? '+' : ''}¥${reg422Diff.toLocaleString()}
+                            ${reg422Diff === 0 ? ' ✓' : ' ⚠'}
+                        </span>
+                    </div>
+                </div>
+                <div>
+                    <h5>423レジ</h5>
+                    <div class="transaction-item">
+                        <span>出金総額:</span>
+                        <span>¥${optimizer.reg423Withdrawals.toLocaleString()}</span>
+                    </div>
+                    <div class="transaction-item">
+                        <span>入金総額:</span>
+                        <span>¥${optimizer.reg423Deposits.toLocaleString()}</span>
+                    </div>
+                    <div class="transaction-item">
+                        <span>差額:</span>
+                        <span class="${reg423Diff === 0 ? 'transaction-ok' : 'transaction-ng'}">
+                            ${reg423Diff >= 0 ? '+' : ''}¥${reg423Diff.toLocaleString()}
+                            ${reg423Diff === 0 ? ' ✓' : ' ⚠'}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="final-balance">
+            <h3>📊 最終的な現金在高</h3>
+            <div class="balance-grid">
+                <div class="balance-register">
+                    <h4>📦 422レジ</h4>
+                    ${finalBalances422}
+                </div>
+                <div class="balance-register">
+                    <h4>🏪 423レジ</h4>
+                    ${finalBalances423}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function calculateFinalBalance(initialReg, depositsByDenom, withdrawalsByDenom) {
+    // 最終在高を計算: 初期在高 + 入金 - 出金
+    const finalReg = {};
+
+    // 紙幣
+    finalReg.bills10000 = initialReg.bills10000 + (depositsByDenom[10000] || 0) - (withdrawalsByDenom[10000] || 0);
+    finalReg.bills5000 = initialReg.bills5000 + (depositsByDenom[5000] || 0) - (withdrawalsByDenom[5000] || 0);
+    finalReg.bills1000 = initialReg.bills1000 + (depositsByDenom[1000] || 0) - (withdrawalsByDenom[1000] || 0);
+
+    // 硬貨
+    finalReg.coins500 = initialReg.coins500 + (depositsByDenom[500] || 0) - (withdrawalsByDenom[500] || 0);
+    finalReg.coins100 = initialReg.coins100 + (depositsByDenom[100] || 0) - (withdrawalsByDenom[100] || 0);
+    finalReg.coins50 = initialReg.coins50 + (depositsByDenom[50] || 0) - (withdrawalsByDenom[50] || 0);
+    finalReg.coins10 = initialReg.coins10 + (depositsByDenom[10] || 0) - (withdrawalsByDenom[10] || 0);
+    finalReg.coins5 = initialReg.coins5 + (depositsByDenom[5] || 0) - (withdrawalsByDenom[5] || 0);
+    finalReg.coins1 = initialReg.coins1 + (depositsByDenom[1] || 0) - (withdrawalsByDenom[1] || 0);
+
+    // 棒金 (422レジのみ)
+    if (initialReg.rolls500 !== undefined) {
+        finalReg.rolls500 = initialReg.rolls500;
+        finalReg.rolls100 = initialReg.rolls100;
+        finalReg.rolls50 = initialReg.rolls50;
+        finalReg.rolls10 = initialReg.rolls10;
+        finalReg.rolls5 = initialReg.rolls5;
+        finalReg.rolls1 = initialReg.rolls1;
+        finalReg.hasRolls = true;  // 棒金があることを記録
+    }
+
+    // HTMLを生成
+    let html = '';
+
+    // 紙幣
+    html += '<div style="margin-bottom: 10px;"><strong>紙幣</strong></div>';
+    if (finalReg.bills10000 > 0) {
+        html += `<div class="balance-item"><span class="balance-label">¥10,000:</span><span class="balance-value">${finalReg.bills10000}枚</span></div>`;
+    }
+    html += `<div class="balance-item"><span class="balance-label">¥5,000:</span><span class="balance-value">${finalReg.bills5000}枚</span></div>`;
+    html += `<div class="balance-item"><span class="balance-label">¥1,000:</span><span class="balance-value">${finalReg.bills1000}枚</span></div>`;
+
+    // 硬貨（バラ）
+    html += '<div style="margin: 15px 0 10px 0;"><strong>硬貨（バラ）</strong></div>';
+    html += `<div class="balance-item"><span class="balance-label">¥500:</span><span class="balance-value">${finalReg.coins500}枚</span></div>`;
+    html += `<div class="balance-item"><span class="balance-label">¥100:</span><span class="balance-value">${finalReg.coins100}枚</span></div>`;
+    html += `<div class="balance-item"><span class="balance-label">¥50:</span><span class="balance-value">${finalReg.coins50}枚</span></div>`;
+    html += `<div class="balance-item"><span class="balance-label">¥10:</span><span class="balance-value">${finalReg.coins10}枚</span></div>`;
+    html += `<div class="balance-item"><span class="balance-label">¥5:</span><span class="balance-value">${finalReg.coins5}枚</span></div>`;
+    html += `<div class="balance-item"><span class="balance-label">¥1:</span><span class="balance-value">${finalReg.coins1}枚</span></div>`;
+
+    // 棒金 (422レジのみ)
+    let rollsTotal = 0;
+    if (finalReg.hasRolls) {
+        html += '<div style="margin: 15px 0 10px 0;"><strong>棒金</strong></div>';
+        html += `<div class="balance-item"><span class="balance-label">¥500棒金:</span><span class="balance-value">${finalReg.rolls500}本</span></div>`;
+        html += `<div class="balance-item"><span class="balance-label">¥100棒金:</span><span class="balance-value">${finalReg.rolls100}本</span></div>`;
+        html += `<div class="balance-item"><span class="balance-label">¥50棒金:</span><span class="balance-value">${finalReg.rolls50}本</span></div>`;
+        html += `<div class="balance-item"><span class="balance-label">¥10棒金:</span><span class="balance-value">${finalReg.rolls10}本</span></div>`;
+        html += `<div class="balance-item"><span class="balance-label">¥5棒金:</span><span class="balance-value">${finalReg.rolls5}本</span></div>`;
+        html += `<div class="balance-item"><span class="balance-label">¥1棒金:</span><span class="balance-value">${finalReg.rolls1}本</span></div>`;
+
+        // 棒金の合計金額を計算
+        rollsTotal = finalReg.rolls500 * 50 * 500 + finalReg.rolls100 * 50 * 100 + finalReg.rolls50 * 50 * 50 +
+                     finalReg.rolls10 * 50 * 10 + finalReg.rolls5 * 50 * 5 + finalReg.rolls1 * 50 * 1;
+    }
+
+    // 硬貨の小計（バラ + 棒金）
+    const coinsTotal = finalReg.coins500 * 500 + finalReg.coins100 * 100 + finalReg.coins50 * 50 +
+                       finalReg.coins10 * 10 + finalReg.coins5 * 5 + finalReg.coins1 * 1 + rollsTotal;
+    html += `<div class="balance-item" style="margin-top: 10px; padding-top: 10px; border-top: 2px solid #dee2e6;"><span class="balance-label" style="font-weight: bold;">硬貨小計:</span><span class="balance-value" style="color: #007bff;">¥${coinsTotal.toLocaleString()}</span></div>`;
+
+    // 合計金額
+    const total = finalReg.bills10000 * 10000 + finalReg.bills5000 * 5000 + finalReg.bills1000 * 1000 + coinsTotal;
+
+    html += `<div class="balance-item"><span class="balance-label">合計:</span><span class="balance-value">¥${total.toLocaleString()}</span></div>`;
+
+    return html;
+}
+
+function calculateTotalValue(reg) {
+    let total = 0;
+    total += reg.bills10000 * 10000;
+    total += reg.bills5000 * 5000;
+    total += reg.bills1000 * 1000;
+    total += reg.getCoinCount(500) * 500;
+    total += reg.getCoinCount(100) * 100;
+    total += reg.getCoinCount(50) * 50;
+    total += reg.getCoinCount(10) * 10;
+    total += reg.getCoinCount(5) * 5;
+    total += reg.getCoinCount(1) * 1;
+
+    // 棒金 (422レジのみ)
+    if (reg.rolls500 !== undefined) {
+        total += reg.getRollCount(500) * 50 * 500;
+        total += reg.getRollCount(100) * 50 * 100;
+        total += reg.getRollCount(50) * 50 * 50;
+        total += reg.getRollCount(10) * 50 * 10;
+        total += reg.getRollCount(5) * 50 * 5;
+        total += reg.getRollCount(1) * 50 * 1;
+    }
+
+    return total;
 }
 
 function resetAll() {
