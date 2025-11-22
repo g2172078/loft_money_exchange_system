@@ -444,6 +444,9 @@ class CashExchangeOptimizer {
             let totalLA = 0;
             let totalLB = 0;
 
+            // 強制両替機使用フラグを取得
+            const forceExchangeBills = document.getElementById('force-exchange-bills').checked;
+
             // 422レジの余剰を確認してLA/LBに分類
             for (const denom of allDenoms) {
                 if (shortages423All[denom]) {
@@ -451,21 +454,29 @@ class CashExchangeOptimizer {
                     const inventory422 = result422.inventory[denom] || 0;
 
                     if (denom >= 1000) {
-                        // 紙幣の場合：最低保有枚数を考慮した余剰計算
-                        const minHolding = denom === 5000 ? MIN_HOLD_5000 : MIN_HOLD_1000;
+                        // 紙幣の場合
 
-                        // 422レジの真の供給可能余剰を計算 (現在の在庫 - 最低保有枚数)
-                        const surplusAvailable = Math.max(0, inventory422 - minHolding);
-
-                        // 供給可能余剰が423レジの不足を賄えるかチェック
-                        if (surplusAvailable >= shortage) {
-                            // 賄える場合: LAに追加
-                            LA[denom] = shortage;
-                            totalLA += shortage * denom;
-                        } else {
-                            // 賄えない場合: LBに追加
+                        // 強制両替機使用モードの場合、紙幣は全てLBへ
+                        if (forceExchangeBills && (denom === 5000 || denom === 1000)) {
                             LB[denom] = shortage;
                             totalLB += shortage * denom;
+                        } else {
+                            // 通常モード：最低保有枚数を考慮した余剰計算
+                            const minHolding = denom === 5000 ? MIN_HOLD_5000 : MIN_HOLD_1000;
+
+                            // 422レジの真の供給可能余剰を計算 (現在の在庫 - 最低保有枚数)
+                            const surplusAvailable = Math.max(0, inventory422 - minHolding);
+
+                            // 供給可能余剰が423レジの不足を賄えるかチェック
+                            if (surplusAvailable >= shortage) {
+                                // 賄える場合: LAに追加
+                                LA[denom] = shortage;
+                                totalLA += shortage * denom;
+                            } else {
+                                // 賄えない場合: LBに追加
+                                LB[denom] = shortage;
+                                totalLB += shortage * denom;
+                            }
                         }
                     } else {
                         // 硬貨の場合：供給後に20枚以上残るかチェック
@@ -507,14 +518,24 @@ class CashExchangeOptimizer {
                     const lbDetails = {};
                     for (const [denom, shortage] of Object.entries(LB)) {
                         const inventory = result422.inventory[parseInt(denom)] || 0;
-                        lbDetails[denom] = `不足${shortage}枚 (422在庫: ${inventory}枚 - 不十分)`;
+                        // 強制モードで紙幣の場合は理由を変更
+                        if (forceExchangeBills && (parseInt(denom) === 5000 || parseInt(denom) === 1000)) {
+                            lbDetails[denom] = `不足${shortage}枚 (強制両替機モード)`;
+                        } else {
+                            lbDetails[denom] = `不足${shortage}枚 (422在庫: ${inventory}枚 - 不十分)`;
+                        }
                     }
+                    const actionLabel = forceExchangeBills
+                        ? '📊 グループB (LB) - 両替機で対応が必要な金種 ⚠️強制モード'
+                        : '📊 グループB (LB) - 両替機で対応が必要な金種';
                     this.exchangeSteps.push({
                         step: this.exchangeSteps.length + 1,
-                        action: '📊 グループB (LB) - 両替機で対応が必要な金種',
+                        action: actionLabel,
                         details: lbDetails,
                         total: totalLB,
-                        info: `LB合計: ¥${totalLB.toLocaleString()}`
+                        info: forceExchangeBills
+                            ? `LB合計: ¥${totalLB.toLocaleString()}（紙幣は強制的に両替機使用）`
+                            : `LB合計: ¥${totalLB.toLocaleString()}`
                     });
 
                     // 最終的なLBを保存
@@ -993,20 +1014,33 @@ class CashExchangeOptimizer {
             totalLC += shortage * 1000;
         }
 
-        // 硬貨の棒金チェック
+        // 硬貨の棒金チェック（1円・5円は後で調整するため一旦スキップ）
+        let need1YenRoll = false;
+        let need5YenRoll = false;
+
         for (const denom of coinDenoms) {
             const currentRolls = this.reg422.getRollCount(denom);
             let needRolls = 0;
 
-            if (denom === 500 || denom === 50 || denom === 5) {
-                // 500円/50円/5円: 棒金が0本の場合
+            if (denom === 1) {
+                // 1円: 棒金が1本以下の場合（後で調整）
+                if (currentRolls <= 1) {
+                    need1YenRoll = true;
+                }
+            } else if (denom === 5) {
+                // 5円: 棒金が0本の場合（後で調整）
                 if (currentRolls === 0) {
-                    needRolls = 1; // 1本補充
+                    need5YenRoll = true;
+                }
+            } else if (denom === 500 || denom === 50) {
+                // 500円/50円: 棒金が0本の場合（単独で出金可能）
+                if (currentRolls === 0) {
+                    needRolls = 1;
                 }
             } else {
-                // 100円/10円/1円: 棒金が1本以下の場合
+                // 100円/10円: 棒金が1本以下の場合、2本になるまで補充（単独で出金可能）
                 if (currentRolls <= 1) {
-                    needRolls = 1; // 1本補充
+                    needRolls = 2 - currentRolls; // 0本→2本追加、1本→1本追加
                 }
             }
 
@@ -1014,6 +1048,35 @@ class CashExchangeOptimizer {
                 LC[denom] = 50 * needRolls; // 棒金1本 = 50枚
                 totalLC += denom * 50 * needRolls;
             }
+        }
+
+        // 1円・5円棒金の調整（両替機の制約: 50円の端数を作らない）
+        // 1円棒金 = 50円、5円棒金 = 250円
+        // 有効な組み合わせ: 1円2本(100円)、5円2本(500円)、1円1本+5円1本(300円)
+        if (need1YenRoll || need5YenRoll) {
+            if (need1YenRoll && need5YenRoll) {
+                // 両方必要: 1円1本 + 5円1本 = 300円
+                LC[1] = 50;
+                LC[5] = 50;
+                totalLC += 50 + 250; // 300円
+            } else if (need1YenRoll && !need5YenRoll) {
+                // 1円のみ必要: 1円2本 = 100円
+                LC[1] = 100;
+                totalLC += 100;
+            } else if (!need1YenRoll && need5YenRoll) {
+                // 5円のみ必要: 5円2本 = 500円
+                LC[5] = 100;
+                totalLC += 500;
+            }
+        }
+
+        // LC合計が50円の端数を含む場合の最終調整
+        // （上記の1円・5円処理で50円端数は解消されているはず）
+        const remainder = totalLC % 100;
+        if (remainder === 50) {
+            // 50円の端数がある場合、1円棒金を追加して100円にする
+            LC[1] = (LC[1] || 0) + 50;
+            totalLC += 50;
         }
 
         return { LC, totalLC };
@@ -1134,29 +1197,22 @@ class CashExchangeOptimizer {
             });
         }
 
-        // LCを棒金に調整
+        // LCを棒金に調整（LCで設定された枚数をそのまま使用）
         const adjustedLC = {};
         let adjustedTotal = 0;
 
-        // 100円未満の硬貨を棒金に調整
+        // 100円未満の硬貨を棒金に調整（LCの枚数をそのまま使用）
         const smallCoins = [50, 10, 5, 1];
         let smallCoinTotal = 0;
 
         for (const denom of smallCoins) {
             if (LC[denom]) {
-                adjustedLC[denom] = 50; // 棒金1本 = 50枚
-                smallCoinTotal += 50 * denom;
+                adjustedLC[denom] = LC[denom]; // LCで指定された枚数をそのまま使用
+                smallCoinTotal += LC[denom] * denom;
             }
         }
 
-        // 100円の倍数チェック（50円余るかどうか）
-        if (smallCoinTotal % 100 !== 0) {
-            // 50円余る場合、1円を2本(100枚)に変更
-            if (adjustedLC[1]) {
-                adjustedLC[1] = 100; // 1円を2本
-                smallCoinTotal += 50; // 50円追加
-            }
-        }
+        // 100円の倍数チェック（50円余るかどうか）は analyze422ExchangeMachineNeeds で処理済み
 
         // 100円以上の金種
         if (LC[500]) {

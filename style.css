@@ -525,3 +525,81 @@ button {
     font-size: 0.9rem;
     color: #6c757d;
 }
+
+/* 強制両替機使用トグルスイッチ */
+.force-exchange-section {
+    background: #ffe6e6;
+    border: 2px solid #dc3545;
+    border-radius: 10px;
+    padding: 15px 20px;
+    margin-top: 20px;
+}
+
+.toggle-group {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 60px;
+    height: 34px;
+    flex-shrink: 0;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: 0.4s;
+    border-radius: 34px;
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 26px;
+    width: 26px;
+    left: 4px;
+    bottom: 4px;
+    background-color: white;
+    transition: 0.4s;
+    border-radius: 50%;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+    background-color: #dc3545;
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+    transform: translateX(26px);
+}
+
+.toggle-label {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.toggle-title {
+    font-weight: bold;
+    color: #721c24;
+    font-size: 1rem;
+}
+
+.toggle-description {
+    font-size: 0.85rem;
+    color: #856404;
+}
