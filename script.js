@@ -975,16 +975,20 @@ class CashExchangeOptimizer {
         const bills5000After = this.reg422.bills5000 - (LA[5000] || 0);
         const bills1000After = this.reg422.bills1000 - (LA[1000] || 0);
 
+        // ユーザーが設定した目標枚数を取得
+        const target5000 = parseInt(document.getElementById('target-bills-5000').value) || 30;
+        const target1000 = parseInt(document.getElementById('target-bills-1000').value) || 60;
+
         // 5000円札のチェック
-        if (bills5000After < TARGET_422_BILLS_5000) {
-            const shortage = TARGET_422_BILLS_5000 - bills5000After;
+        if (bills5000After < target5000) {
+            const shortage = target5000 - bills5000After;
             LC[5000] = shortage;
             totalLC += shortage * 5000;
         }
 
         // 1000円札のチェック
-        if (bills1000After < TARGET_422_BILLS_1000) {
-            const shortage = TARGET_422_BILLS_1000 - bills1000After;
+        if (bills1000After < target1000) {
+            const shortage = target1000 - bills1000After;
             LC[1000] = shortage;
             totalLC += shortage * 1000;
         }

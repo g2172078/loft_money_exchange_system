@@ -469,3 +469,59 @@ button {
     color: #dc3545;
     font-weight: bold;
 }
+
+/* 422レジ紙幣目標枚数設定 */
+.bills-target-section {
+    background: #fff9e6;
+    border: 1px solid #ffc107;
+    border-radius: 10px;
+    padding: 20px;
+    margin-top: 20px;
+}
+
+.bills-target-section h4 {
+    color: #856404;
+    margin-bottom: 15px;
+    font-size: 1.1rem;
+}
+
+.bills-target-inputs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+}
+
+.target-input-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: white;
+    padding: 12px 15px;
+    border-radius: 8px;
+}
+
+.target-input-group label {
+    font-weight: bold;
+    color: #495057;
+    min-width: 80px;
+}
+
+.target-input-group input {
+    width: 80px;
+    padding: 8px;
+    border: 2px solid #dee2e6;
+    border-radius: 5px;
+    text-align: center;
+    font-size: 1rem;
+    transition: border-color 0.3s ease;
+}
+
+.target-input-group input:focus {
+    outline: none;
+    border-color: #ffc107;
+}
+
+.target-input-group span {
+    font-size: 0.9rem;
+    color: #6c757d;
+}
