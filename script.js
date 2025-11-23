@@ -169,6 +169,41 @@ class CashExchangeOptimizer {
             return this.exchangeSteps;
         }
 
+        // 423レジの両替が不要な場合でも、422レジのLC処理（両替機補充）は必要
+        if (result423.noExchangeNeeded) {
+            // 422レジの棒金チェック（LAが空なので空のオブジェクトを渡す）
+            this.check422RollsNeeded({});
+
+            // 422レジの両替機利用（LC）を分析
+            const { LC, totalLC } = this.analyze422ExchangeMachineNeeds({});
+
+            if (Object.keys(LC).length > 0 && totalLC > 0) {
+                // 硬貨合計チェックと再計算
+                const coinCheckResult = this.check422CoinsTotal(LC, totalLC);
+
+                // LCの情報を表示
+                this.exchangeSteps.push({
+                    step: this.exchangeSteps.length + 1,
+                    action: '📊 グループC (LC) - 422レジの両替機で補充が必要',
+                    details: coinCheckResult.LC,
+                    total: coinCheckResult.totalLC,
+                    info: `LC合計: ¥${coinCheckResult.totalLC.toLocaleString()}, 硬貨合計: ¥${coinCheckResult.finalCoinsTotal.toLocaleString()}`
+                });
+
+                // 422レジ用の両替機処理を実行
+                this.process422ExchangeMachine(coinCheckResult.LC, coinCheckResult.totalLC);
+            } else {
+                this.exchangeSteps.push({
+                    step: this.exchangeSteps.length + 1,
+                    action: '✅ 422レジも補充不要',
+                    details: '422レジの硬貨・棒金も全て目標レベル以上です。',
+                    total: null
+                });
+            }
+
+            return this.exchangeSteps;
+        }
+
         // 422レジの不足と余剰を確認
         const result422 = this.analyze422Register();
 
@@ -237,15 +272,15 @@ class CashExchangeOptimizer {
             }
         }
 
-        // 不足がなければ終了
+        // 不足がなければ423レジの両替は不要（ただし422レジのLC処理は必要な場合がある）
         if (totalShortage === 0) {
             this.exchangeSteps.push({
                 step: 1,
-                action: '✅ 両替不要',
-                details: '423レジの硬貨・紙幣は全て目標レベル以上です。',
+                action: '✅ 423レジ両替不要',
+                details: '423レジの硬貨・紙幣は全て目標レベル以上です。422レジの両替機補充を確認します。',
                 total: null
             });
-            return { hasError: true };
+            return { hasError: false, noExchangeNeeded: true };
         }
 
         // 不足情報を記録
