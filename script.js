@@ -770,6 +770,40 @@ class CashExchangeOptimizer {
                     isUserAction: true
                 });
 
+                // 2.5. 422→423へのLA移動前に、バラ硬貨が10枚以下になる場合は棒金を崩す
+                const coinDenoms = [500, 100, 50, 10, 5, 1];
+                for (const denom of coinDenoms) {
+                    const count = LA[denom] || 0;
+                    if (count > 0) {
+                        const currentCoins = this.reg422.getCoinCount(denom);
+                        const afterMoveCoins = currentCoins - count;
+
+                        // 移動後のバラ枚数が10枚以下になり、かつ棒金が1本以上ある場合
+                        if (afterMoveCoins <= 10 && this.reg422.getRollCount(denom) > 0) {
+                            // 棒金を崩す指示を追加
+                            const breakDetails = {};
+                            breakDetails[denom] = `バラ${currentCoins}枚 → LA移動${count}枚 → 残${afterMoveCoins}枚 (棒金1本を崩す)`;
+                            this.exchangeSteps.push({
+                                step: this.exchangeSteps.length + 1,
+                                action: '🗞️ 422レジ LA移動前の棒金崩し',
+                                details: breakDetails,
+                                total: null,
+                                info: `422レジから423レジへ${denom}円硬貨を${count}枚移動する前に、422レジの${denom}円棒金を1本崩してください`,
+                                isUserAction: true
+                            });
+
+                            // データ更新：棒金を崩す
+                            this.reg422.setCoinCount(denom, currentCoins + 50);
+                            this.reg422.setRollCount(denom, this.reg422.getRollCount(denom) - 1);
+
+                            // 棒金を崩した分をバラ硬貨の入金として記録
+                            const rollBreakDeposit = {};
+                            rollBreakDeposit[denom] = 50;
+                            this.trackDeposit(422, rollBreakDeposit);
+                        }
+                    }
+                }
+
                 // 3. 422レジからLA出金指示
                 this.reg422Withdrawals += totalLA;
                 this.trackWithdrawal(422, LA);
@@ -1814,12 +1848,14 @@ function generateSummary(optimizer) {
     const finalBalances422 = calculateFinalBalance(
         optimizer.initialReg422,
         optimizer.reg422DepositsByDenom,
-        optimizer.reg422WithdrawalsByDenom
+        optimizer.reg422WithdrawalsByDenom,
+        optimizer.reg422  // 棒金の最終状態を渡す
     );
     const finalBalances423 = calculateFinalBalance(
         optimizer.initialReg423,
         optimizer.reg423DepositsByDenom,
-        optimizer.reg423WithdrawalsByDenom
+        optimizer.reg423WithdrawalsByDenom,
+        null  // 423レジには棒金がない
     );
 
     return `
@@ -1881,7 +1917,7 @@ function generateSummary(optimizer) {
     `;
 }
 
-function calculateFinalBalance(initialReg, depositsByDenom, withdrawalsByDenom) {
+function calculateFinalBalance(initialReg, depositsByDenom, withdrawalsByDenom, currentReg = null) {
     // 最終在高を計算: 初期在高 + 入金 - 出金
     const finalReg = {};
 
@@ -1898,14 +1934,25 @@ function calculateFinalBalance(initialReg, depositsByDenom, withdrawalsByDenom) 
     finalReg.coins5 = initialReg.coins5 + (depositsByDenom[5] || 0) - (withdrawalsByDenom[5] || 0);
     finalReg.coins1 = initialReg.coins1 + (depositsByDenom[1] || 0) - (withdrawalsByDenom[1] || 0);
 
-    // 棒金 (422レジのみ)
+    // 棒金 (422レジのみ) - currentRegが渡された場合は最新の値を使う
     if (initialReg.rolls500 !== undefined) {
-        finalReg.rolls500 = initialReg.rolls500;
-        finalReg.rolls100 = initialReg.rolls100;
-        finalReg.rolls50 = initialReg.rolls50;
-        finalReg.rolls10 = initialReg.rolls10;
-        finalReg.rolls5 = initialReg.rolls5;
-        finalReg.rolls1 = initialReg.rolls1;
+        if (currentReg && currentReg.rolls500 !== undefined) {
+            // 棒金の最新状態を使用
+            finalReg.rolls500 = currentReg.rolls500;
+            finalReg.rolls100 = currentReg.rolls100;
+            finalReg.rolls50 = currentReg.rolls50;
+            finalReg.rolls10 = currentReg.rolls10;
+            finalReg.rolls5 = currentReg.rolls5;
+            finalReg.rolls1 = currentReg.rolls1;
+        } else {
+            // 初期値を使用（変更なし）
+            finalReg.rolls500 = initialReg.rolls500;
+            finalReg.rolls100 = initialReg.rolls100;
+            finalReg.rolls50 = initialReg.rolls50;
+            finalReg.rolls10 = initialReg.rolls10;
+            finalReg.rolls5 = initialReg.rolls5;
+            finalReg.rolls1 = initialReg.rolls1;
+        }
         finalReg.hasRolls = true;  // 棒金があることを記録
     }
 
