@@ -16,7 +16,7 @@ const TARGET_422_BILLS_5000 = 30;  // 5000円札の目標枚数
 const TARGET_422_BILLS_1000 = 60;  // 1000円札の目標枚数
 
 // 422レジの硬貨合計目標金額
-const TARGET_422_COINS_TOTAL = 83250;
+const TARGET_422_COINS_TOTAL = 90000;
 
 // 棒金の上限
 const MAX_ROLLS_500 = 2;  // 500円/50円/5円の棒金上限
@@ -1193,6 +1193,28 @@ class CashExchangeOptimizer {
                     additionalRolls[500] = (additionalRolls[500] || 0) + (add500Rolls * 50);
                     additionalTotal += add500Rolls * 500 * 50;
                     currentCoinsTotal += add500Rolls * 500 * 50;
+                }
+            }
+
+            // まだ不足している場合、500円のバラ枚数をチェック
+            if (currentCoinsTotal < TARGET_422_COINS_TOTAL) {
+                const current500Coins = this.reg422.getCoinCount(500); // 500円のバラ枚数
+                const current500RollsNow = this.reg422.getRollCount(500);
+                const lc500RollsNow = Math.floor((additionalRolls[500] || 0) / 50);
+                const total500RollsNow = current500RollsNow + lc500RollsNow;
+
+                // 500円のバラが30枚未満 かつ 棒金が3本未満の場合、500円棒金を3本まで追加可能
+                if (current500Coins < 30 && total500RollsNow < 3) {
+                    const maxAdd500Extra = 3 - total500RollsNow; // 3本まで追加可能
+                    const remainingShortage = TARGET_422_COINS_TOTAL - currentCoinsTotal;
+                    const needed500RollsExtra = Math.ceil(remainingShortage / (500 * 50));
+                    const add500RollsExtra = Math.min(needed500RollsExtra, maxAdd500Extra);
+
+                    if (add500RollsExtra > 0) {
+                        additionalRolls[500] = (additionalRolls[500] || 0) + (add500RollsExtra * 50);
+                        additionalTotal += add500RollsExtra * 500 * 50;
+                        currentCoinsTotal += add500RollsExtra * 500 * 50;
+                    }
                 }
             }
 
