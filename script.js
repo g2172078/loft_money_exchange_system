@@ -1266,42 +1266,34 @@ class CashExchangeOptimizer {
             });
         }
 
-        // LCを棒金に調整（LCで設定された枚数をそのまま使用）
+        // LCを棒金とバラに分けて調整（50枚単位は棒金、端数はバラ）
         const adjustedLC = {};
+        const rollDetails = []; // 棒金とバラの詳細を文字列で記録
         let adjustedTotal = 0;
 
-        // 100円未満の硬貨を棒金に調整（LCの枚数をそのまま使用）
-        const smallCoins = [50, 10, 5, 1];
-        let smallCoinTotal = 0;
+        // 全金種を処理（硬貨も紙幣も）
+        const allDenoms = [5000, 1000, 500, 100, 50, 10, 5, 1];
 
-        for (const denom of smallCoins) {
+        for (const denom of allDenoms) {
             if (LC[denom]) {
-                adjustedLC[denom] = LC[denom]; // LCで指定された枚数をそのまま使用
-                smallCoinTotal += LC[denom] * denom;
+                const totalCoins = LC[denom];
+                const rolls = Math.floor(totalCoins / 50); // 棒金の本数
+                const loose = totalCoins % 50; // バラの枚数
+
+                // 棒金とバラの内訳を文字列化
+                if (rolls > 0 && loose > 0) {
+                    rollDetails.push(`¥${denom}: 棒金${rolls}本 + バラ${loose}枚`);
+                } else if (rolls > 0) {
+                    rollDetails.push(`¥${denom}: 棒金${rolls}本`);
+                } else if (loose > 0) {
+                    rollDetails.push(`¥${denom}: バラ${loose}枚`);
+                }
+
+                // adjustedLCには合計枚数を設定（従来通り）
+                adjustedLC[denom] = totalCoins;
+                adjustedTotal += totalCoins * denom;
             }
         }
-
-        // 100円の倍数チェック（50円余るかどうか）は analyze422ExchangeMachineNeeds で処理済み
-
-        // 100円以上の金種
-        if (LC[500]) {
-            adjustedLC[500] = LC[500];
-            adjustedTotal += LC[500] * 500;
-        }
-        if (LC[100]) {
-            adjustedLC[100] = LC[100];
-            adjustedTotal += LC[100] * 100;
-        }
-        if (LC[1000]) {
-            adjustedLC[1000] = LC[1000];
-            adjustedTotal += LC[1000] * 1000;
-        }
-        if (LC[5000]) {
-            adjustedLC[5000] = LC[5000];
-            adjustedTotal += LC[5000] * 5000;
-        }
-
-        adjustedTotal += smallCoinTotal;
 
         // 10000円単位に切り上げ
         const withdrawalAmount = Math.ceil(adjustedTotal / 10000) * 10000;
@@ -1322,10 +1314,32 @@ class CashExchangeOptimizer {
         const changeAmount = withdrawalAmount - adjustedTotal;
         const change = this.calculateChange(changeAmount);
 
-        // 両替機からの出金内訳（LC + おつり）
-        const machineWithdrawal = { ...adjustedLC };
+        // 両替機からの出金内訳（LC + おつり）を棒金とバラ形式で作成
+        const machineWithdrawalCounts = { ...adjustedLC };
         for (const [denom, count] of Object.entries(change)) {
-            machineWithdrawal[denom] = (machineWithdrawal[denom] || 0) + count;
+            machineWithdrawalCounts[denom] = (machineWithdrawalCounts[denom] || 0) + count;
+        }
+
+        // 表示用に棒金とバラの形式に変換
+        const machineWithdrawal = {};
+        for (const [denom, totalCount] of Object.entries(machineWithdrawalCounts)) {
+            const denomNum = parseInt(denom);
+            const rolls = Math.floor(totalCount / 50);
+            const loose = totalCount % 50;
+
+            // 硬貨（1000円未満）の場合は棒金とバラ形式で表示
+            if (denomNum < 1000) {
+                if (rolls > 0 && loose > 0) {
+                    machineWithdrawal[denom] = `${rolls}本+${loose}枚(${totalCount}枚)`;
+                } else if (rolls > 0) {
+                    machineWithdrawal[denom] = `${rolls}本(${totalCount}枚)`;
+                } else {
+                    machineWithdrawal[denom] = `${loose}枚`;
+                }
+            } else {
+                // 紙幣の場合は枚数のみ
+                machineWithdrawal[denom] = totalCount;
+            }
         }
 
         // 手順を表示
@@ -1349,21 +1363,27 @@ class CashExchangeOptimizer {
             isUserAction: true
         });
 
+        // 棒金とバラの詳細を info に追加
+        let rollDetailsInfo = '';
+        if (rollDetails.length > 0) {
+            rollDetailsInfo = '\n【棒金・バラ内訳】\n' + rollDetails.join('\n');
+        }
+
         this.exchangeSteps.push({
             step: this.exchangeSteps.length + 1,
             action: '🏧 両替機から出金（422レジ用）',
             details: machineWithdrawal,
             total: withdrawalAmount,
-            info: `LC金種 ¥${adjustedTotal.toLocaleString()} + おつり ¥${changeAmount.toLocaleString()}`,
+            info: `LC金種 ¥${adjustedTotal.toLocaleString()} + おつり ¥${changeAmount.toLocaleString()}${rollDetailsInfo}`,
             isUserAction: true
         });
 
         this.reg422Deposits += withdrawalAmount;
-        this.trackDeposit(422, machineWithdrawal);
+        this.trackDeposit(422, machineWithdrawalCounts); // 数値で追跡
         this.exchangeSteps.push({
             step: this.exchangeSteps.length + 1,
             action: '💰 422レジへ入金',
-            details: machineWithdrawal,
+            details: machineWithdrawal, // 表示は文字列形式
             total: withdrawalAmount,
             info: `両替機からの出金を422レジへ入金`,
             isUserAction: true
@@ -1806,7 +1826,12 @@ function displayResults(steps, optimizer) {
         let detailsHtml = '';
         if (typeof step.details === 'object' && step.details !== null) {
             for (const [key, value] of Object.entries(step.details)) {
-                detailsHtml += `<div>• ¥${key}: ${value}枚</div>`;
+                // 値が数値の場合は「枚」を付ける、文字列の場合はそのまま表示
+                if (typeof value === 'number') {
+                    detailsHtml += `<div>• ¥${key}: ${value}枚</div>`;
+                } else {
+                    detailsHtml += `<div>• ¥${key}: ${value}</div>`;
+                }
             }
         } else if (typeof step.details === 'string') {
             detailsHtml = `<div>${step.details}</div>`;
