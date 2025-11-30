@@ -342,6 +342,7 @@ button {
     display: flex;
     align-items: center;
     gap: 10px;
+    flex-wrap: wrap;
 }
 
 .target-label {
@@ -351,6 +352,12 @@ button {
 
 .target-value {
     color: #004085;
+}
+
+.target-note {
+    color: #6c757d;
+    font-size: 0.85rem;
+    font-style: italic;
 }
 
 @keyframes pulse {
