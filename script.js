@@ -16,7 +16,7 @@ const TARGET_422_BILLS_5000 = 30;  // 5000円札の目標枚数
 const TARGET_422_BILLS_1000 = 60;  // 1000円札の目標枚数
 
 // 422レジの硬貨合計目標金額
-const TARGET_422_COINS_TOTAL = 90000;
+const TARGET_422_COINS_TOTAL = 83250;
 
 // 棒金の上限
 const MAX_ROLLS_500 = 2;  // 500円/50円/5円の棒金上限
@@ -770,40 +770,6 @@ class CashExchangeOptimizer {
                     isUserAction: true
                 });
 
-                // 2.5. 422→423へのLA移動前に、バラ硬貨が10枚以下になる場合は棒金を崩す
-                const coinDenoms = [500, 100, 50, 10, 5, 1];
-                for (const denom of coinDenoms) {
-                    const count = LA[denom] || 0;
-                    if (count > 0) {
-                        const currentCoins = this.reg422.getCoinCount(denom);
-                        const afterMoveCoins = currentCoins - count;
-
-                        // 移動後のバラ枚数が10枚以下になり、かつ棒金が1本以上ある場合
-                        if (afterMoveCoins <= 10 && this.reg422.getRollCount(denom) > 0) {
-                            // 棒金を崩す指示を追加
-                            const breakDetails = {};
-                            breakDetails[denom] = `バラ${currentCoins}枚 → LA移動${count}枚 → 残${afterMoveCoins}枚 (棒金1本を崩す)`;
-                            this.exchangeSteps.push({
-                                step: this.exchangeSteps.length + 1,
-                                action: '🗞️ 422レジ LA移動前の棒金崩し',
-                                details: breakDetails,
-                                total: null,
-                                info: `422レジから423レジへ${denom}円硬貨を${count}枚移動する前に、422レジの${denom}円棒金を1本崩してください`,
-                                isUserAction: true
-                            });
-
-                            // データ更新：棒金を崩す
-                            this.reg422.setCoinCount(denom, currentCoins + 50);
-                            this.reg422.setRollCount(denom, this.reg422.getRollCount(denom) - 1);
-
-                            // 棒金を崩した分をバラ硬貨の入金として記録
-                            const rollBreakDeposit = {};
-                            rollBreakDeposit[denom] = 50;
-                            this.trackDeposit(422, rollBreakDeposit);
-                        }
-                    }
-                }
-
                 // 3. 422レジからLA出金指示
                 this.reg422Withdrawals += totalLA;
                 this.trackWithdrawal(422, LA);
@@ -1196,28 +1162,6 @@ class CashExchangeOptimizer {
                 }
             }
 
-            // まだ不足している場合、500円のバラ枚数をチェック
-            if (currentCoinsTotal < TARGET_422_COINS_TOTAL) {
-                const current500Coins = this.reg422.getCoinCount(500); // 500円のバラ枚数
-                const current500RollsNow = this.reg422.getRollCount(500);
-                const lc500RollsNow = Math.floor((additionalRolls[500] || 0) / 50);
-                const total500RollsNow = current500RollsNow + lc500RollsNow;
-
-                // 500円のバラが30枚未満 かつ 棒金が3本未満の場合、500円棒金を3本まで追加可能
-                if (current500Coins < 30 && total500RollsNow < 3) {
-                    const maxAdd500Extra = 3 - total500RollsNow; // 3本まで追加可能
-                    const remainingShortage = TARGET_422_COINS_TOTAL - currentCoinsTotal;
-                    const needed500RollsExtra = Math.ceil(remainingShortage / (500 * 50));
-                    const add500RollsExtra = Math.min(needed500RollsExtra, maxAdd500Extra);
-
-                    if (add500RollsExtra > 0) {
-                        additionalRolls[500] = (additionalRolls[500] || 0) + (add500RollsExtra * 50);
-                        additionalTotal += add500RollsExtra * 500 * 50;
-                        currentCoinsTotal += add500RollsExtra * 500 * 50;
-                    }
-                }
-            }
-
             // まだ不足している場合、100円棒金を追加
             if (currentCoinsTotal < TARGET_422_COINS_TOTAL) {
                 const remainingShortage = TARGET_422_COINS_TOTAL - currentCoinsTotal;
@@ -1288,34 +1232,42 @@ class CashExchangeOptimizer {
             });
         }
 
-        // LCを棒金とバラに分けて調整（50枚単位は棒金、端数はバラ）
+        // LCを棒金に調整（LCで設定された枚数をそのまま使用）
         const adjustedLC = {};
-        const rollDetails = []; // 棒金とバラの詳細を文字列で記録
         let adjustedTotal = 0;
 
-        // 全金種を処理（硬貨も紙幣も）
-        const allDenoms = [5000, 1000, 500, 100, 50, 10, 5, 1];
+        // 100円未満の硬貨を棒金に調整（LCの枚数をそのまま使用）
+        const smallCoins = [50, 10, 5, 1];
+        let smallCoinTotal = 0;
 
-        for (const denom of allDenoms) {
+        for (const denom of smallCoins) {
             if (LC[denom]) {
-                const totalCoins = LC[denom];
-                const rolls = Math.floor(totalCoins / 50); // 棒金の本数
-                const loose = totalCoins % 50; // バラの枚数
-
-                // 棒金とバラの内訳を文字列化
-                if (rolls > 0 && loose > 0) {
-                    rollDetails.push(`¥${denom}: 棒金${rolls}本 + バラ${loose}枚`);
-                } else if (rolls > 0) {
-                    rollDetails.push(`¥${denom}: 棒金${rolls}本`);
-                } else if (loose > 0) {
-                    rollDetails.push(`¥${denom}: バラ${loose}枚`);
-                }
-
-                // adjustedLCには合計枚数を設定（従来通り）
-                adjustedLC[denom] = totalCoins;
-                adjustedTotal += totalCoins * denom;
+                adjustedLC[denom] = LC[denom]; // LCで指定された枚数をそのまま使用
+                smallCoinTotal += LC[denom] * denom;
             }
         }
+
+        // 100円の倍数チェック（50円余るかどうか）は analyze422ExchangeMachineNeeds で処理済み
+
+        // 100円以上の金種
+        if (LC[500]) {
+            adjustedLC[500] = LC[500];
+            adjustedTotal += LC[500] * 500;
+        }
+        if (LC[100]) {
+            adjustedLC[100] = LC[100];
+            adjustedTotal += LC[100] * 100;
+        }
+        if (LC[1000]) {
+            adjustedLC[1000] = LC[1000];
+            adjustedTotal += LC[1000] * 1000;
+        }
+        if (LC[5000]) {
+            adjustedLC[5000] = LC[5000];
+            adjustedTotal += LC[5000] * 5000;
+        }
+
+        adjustedTotal += smallCoinTotal;
 
         // 10000円単位に切り上げ
         const withdrawalAmount = Math.ceil(adjustedTotal / 10000) * 10000;
@@ -1336,32 +1288,10 @@ class CashExchangeOptimizer {
         const changeAmount = withdrawalAmount - adjustedTotal;
         const change = this.calculateChange(changeAmount);
 
-        // 両替機からの出金内訳（LC + おつり）を棒金とバラ形式で作成
-        const machineWithdrawalCounts = { ...adjustedLC };
+        // 両替機からの出金内訳（LC + おつり）
+        const machineWithdrawal = { ...adjustedLC };
         for (const [denom, count] of Object.entries(change)) {
-            machineWithdrawalCounts[denom] = (machineWithdrawalCounts[denom] || 0) + count;
-        }
-
-        // 表示用に棒金とバラの形式に変換
-        const machineWithdrawal = {};
-        for (const [denom, totalCount] of Object.entries(machineWithdrawalCounts)) {
-            const denomNum = parseInt(denom);
-            const rolls = Math.floor(totalCount / 50);
-            const loose = totalCount % 50;
-
-            // 硬貨（1000円未満）の場合は棒金とバラ形式で表示
-            if (denomNum < 1000) {
-                if (rolls > 0 && loose > 0) {
-                    machineWithdrawal[denom] = `${rolls}本+${loose}枚(${totalCount}枚)`;
-                } else if (rolls > 0) {
-                    machineWithdrawal[denom] = `${rolls}本(${totalCount}枚)`;
-                } else {
-                    machineWithdrawal[denom] = `${loose}枚`;
-                }
-            } else {
-                // 紙幣の場合は枚数のみ
-                machineWithdrawal[denom] = totalCount;
-            }
+            machineWithdrawal[denom] = (machineWithdrawal[denom] || 0) + count;
         }
 
         // 手順を表示
@@ -1385,27 +1315,21 @@ class CashExchangeOptimizer {
             isUserAction: true
         });
 
-        // 棒金とバラの詳細を info に追加
-        let rollDetailsInfo = '';
-        if (rollDetails.length > 0) {
-            rollDetailsInfo = '\n【棒金・バラ内訳】\n' + rollDetails.join('\n');
-        }
-
         this.exchangeSteps.push({
             step: this.exchangeSteps.length + 1,
             action: '🏧 両替機から出金（422レジ用）',
             details: machineWithdrawal,
             total: withdrawalAmount,
-            info: `LC金種 ¥${adjustedTotal.toLocaleString()} + おつり ¥${changeAmount.toLocaleString()}${rollDetailsInfo}`,
+            info: `LC金種 ¥${adjustedTotal.toLocaleString()} + おつり ¥${changeAmount.toLocaleString()}`,
             isUserAction: true
         });
 
         this.reg422Deposits += withdrawalAmount;
-        this.trackDeposit(422, machineWithdrawalCounts); // 数値で追跡
+        this.trackDeposit(422, machineWithdrawal);
         this.exchangeSteps.push({
             step: this.exchangeSteps.length + 1,
             action: '💰 422レジへ入金',
-            details: machineWithdrawal, // 表示は文字列形式
+            details: machineWithdrawal,
             total: withdrawalAmount,
             info: `両替機からの出金を422レジへ入金`,
             isUserAction: true
@@ -1848,12 +1772,7 @@ function displayResults(steps, optimizer) {
         let detailsHtml = '';
         if (typeof step.details === 'object' && step.details !== null) {
             for (const [key, value] of Object.entries(step.details)) {
-                // 値が数値の場合は「枚」を付ける、文字列の場合はそのまま表示
-                if (typeof value === 'number') {
-                    detailsHtml += `<div>• ¥${key}: ${value}枚</div>`;
-                } else {
-                    detailsHtml += `<div>• ¥${key}: ${value}</div>`;
-                }
+                detailsHtml += `<div>• ¥${key}: ${value}枚</div>`;
             }
         } else if (typeof step.details === 'string') {
             detailsHtml = `<div>${step.details}</div>`;
@@ -1895,14 +1814,12 @@ function generateSummary(optimizer) {
     const finalBalances422 = calculateFinalBalance(
         optimizer.initialReg422,
         optimizer.reg422DepositsByDenom,
-        optimizer.reg422WithdrawalsByDenom,
-        optimizer.reg422  // 棒金の最終状態を渡す
+        optimizer.reg422WithdrawalsByDenom
     );
     const finalBalances423 = calculateFinalBalance(
         optimizer.initialReg423,
         optimizer.reg423DepositsByDenom,
-        optimizer.reg423WithdrawalsByDenom,
-        null  // 423レジには棒金がない
+        optimizer.reg423WithdrawalsByDenom
     );
 
     return `
@@ -1964,7 +1881,7 @@ function generateSummary(optimizer) {
     `;
 }
 
-function calculateFinalBalance(initialReg, depositsByDenom, withdrawalsByDenom, currentReg = null) {
+function calculateFinalBalance(initialReg, depositsByDenom, withdrawalsByDenom) {
     // 最終在高を計算: 初期在高 + 入金 - 出金
     const finalReg = {};
 
@@ -1981,25 +1898,14 @@ function calculateFinalBalance(initialReg, depositsByDenom, withdrawalsByDenom, 
     finalReg.coins5 = initialReg.coins5 + (depositsByDenom[5] || 0) - (withdrawalsByDenom[5] || 0);
     finalReg.coins1 = initialReg.coins1 + (depositsByDenom[1] || 0) - (withdrawalsByDenom[1] || 0);
 
-    // 棒金 (422レジのみ) - currentRegが渡された場合は最新の値を使う
+    // 棒金 (422レジのみ)
     if (initialReg.rolls500 !== undefined) {
-        if (currentReg && currentReg.rolls500 !== undefined) {
-            // 棒金の最新状態を使用
-            finalReg.rolls500 = currentReg.rolls500;
-            finalReg.rolls100 = currentReg.rolls100;
-            finalReg.rolls50 = currentReg.rolls50;
-            finalReg.rolls10 = currentReg.rolls10;
-            finalReg.rolls5 = currentReg.rolls5;
-            finalReg.rolls1 = currentReg.rolls1;
-        } else {
-            // 初期値を使用（変更なし）
-            finalReg.rolls500 = initialReg.rolls500;
-            finalReg.rolls100 = initialReg.rolls100;
-            finalReg.rolls50 = initialReg.rolls50;
-            finalReg.rolls10 = initialReg.rolls10;
-            finalReg.rolls5 = initialReg.rolls5;
-            finalReg.rolls1 = initialReg.rolls1;
-        }
+        finalReg.rolls500 = initialReg.rolls500;
+        finalReg.rolls100 = initialReg.rolls100;
+        finalReg.rolls50 = initialReg.rolls50;
+        finalReg.rolls10 = initialReg.rolls10;
+        finalReg.rolls5 = initialReg.rolls5;
+        finalReg.rolls1 = initialReg.rolls1;
         finalReg.hasRolls = true;  // 棒金があることを記録
     }
 
