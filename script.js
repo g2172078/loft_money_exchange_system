@@ -1830,6 +1830,9 @@ function optimizeCash() {
 
         displayResults(steps, optimizer);
 
+        // 問題報告用にoptimizerを保存
+        currentOptimizer = optimizer;
+
         button.classList.remove('optimizing');
         button.disabled = false;
     }, 500);
@@ -2104,3 +2107,208 @@ function resetAll() {
 
 // 初期化
 updateTotals();
+
+// 問題報告機能
+let currentOptimizer = null; // 最後に実行したoptimizerを保存
+
+function reportProblem() {
+    if (!currentOptimizer) {
+        alert('まず「最適化を実行」を行ってください。');
+        return;
+    }
+
+    // 送信先メールアドレス（固定）
+    const toEmail = 'xiangtailongkou866@gmail.com'; // ここに実際のメールアドレスを設定してください
+
+    // メール件名
+    const subject = '残置両替システム - 問題報告';
+
+    // メール本文を生成
+    let body = '【残置両替システム 問題報告】\n\n';
+    body += '送信者: [ここに名前を記入してください]\n\n';
+    body += '=' .repeat(60) + '\n\n';
+
+    // 設定情報
+    body += '【設定情報】\n';
+    const forceExchange = document.getElementById('force-exchange-bills').checked;
+    body += `・423レジ紙幣は強制的に両替機使用: ${forceExchange ? 'ON' : 'OFF'}\n`;
+    const target5000 = document.getElementById('target-bills-5000').value;
+    const target1000 = document.getElementById('target-bills-1000').value;
+    body += `・422レジ紙幣目標枚数（5000円札）: ${target5000}枚以上\n`;
+    body += `・422レジ紙幣目標枚数（1000円札）: ${target1000}枚以上\n`;
+    body += '\n' + '='.repeat(60) + '\n\n';
+
+    // 初期在高
+    body += '【初期在高】\n\n';
+    body += '◆422レジ\n';
+    body += formatInventory(currentOptimizer.initialReg422, true);
+    body += '\n◆423レジ\n';
+    body += formatInventory(currentOptimizer.initialReg423, false);
+    body += '\n' + '='.repeat(60) + '\n\n';
+
+    // 処理手順
+    body += '【処理手順】\n\n';
+    currentOptimizer.exchangeSteps.forEach(step => {
+        body += `【手順${step.step}】 ${step.action}\n`;
+        if (typeof step.details === 'object' && step.details !== null) {
+            for (const [key, value] of Object.entries(step.details)) {
+                if (typeof value === 'number') {
+                    body += `• ¥${key}: ${value}枚\n`;
+                } else {
+                    body += `• ¥${key}: ${value}\n`;
+                }
+            }
+        } else if (typeof step.details === 'string') {
+            body += `${step.details}\n`;
+        }
+        if (step.total !== null && step.total !== undefined) {
+            body += `合計: ¥${step.total.toLocaleString()}\n`;
+        }
+        if (step.info) {
+            body += `${step.info}\n`;
+        }
+        body += '\n';
+    });
+    body += '='.repeat(60) + '\n\n';
+
+    // 入出金総和
+    body += '【入出金総和】\n\n';
+    body += '◆422レジ\n';
+    body += `・出金総額: ¥${currentOptimizer.reg422Withdrawals.toLocaleString()}\n`;
+    body += `・入金総額: ¥${currentOptimizer.reg422Deposits.toLocaleString()}\n`;
+    const diff422 = currentOptimizer.reg422Deposits - currentOptimizer.reg422Withdrawals;
+    body += `・差額: ¥${diff422.toLocaleString()}\n\n`;
+
+    body += '◆423レジ\n';
+    body += `・出金総額: ¥${currentOptimizer.reg423Withdrawals.toLocaleString()}\n`;
+    body += `・入金総額: ¥${currentOptimizer.reg423Deposits.toLocaleString()}\n`;
+    const diff423 = currentOptimizer.reg423Deposits - currentOptimizer.reg423Withdrawals;
+    body += `・差額: ¥${diff423.toLocaleString()}\n\n`;
+    body += '='.repeat(60) + '\n\n';
+
+    // 最終在高
+    body += '【最終在高（計算結果）】\n\n';
+
+    // 最終在高を計算（オブジェクトとして）
+    const final422 = calculateFinalBalanceObject(
+        currentOptimizer.initialReg422,
+        currentOptimizer.reg422DepositsByDenom,
+        currentOptimizer.reg422WithdrawalsByDenom,
+        currentOptimizer.reg422
+    );
+    const final423 = calculateFinalBalanceObject(
+        currentOptimizer.initialReg423,
+        currentOptimizer.reg423DepositsByDenom,
+        currentOptimizer.reg423WithdrawalsByDenom,
+        currentOptimizer.reg423
+    );
+
+    body += '◆422レジ\n';
+    body += formatFinalBalance(final422);
+    body += '\n◆423レジ\n';
+    body += formatFinalBalance(final423);
+    body += '\n' + '='.repeat(60) + '\n\n';
+
+    body += '【問題の詳細】\n';
+    body += '[ここに問題の詳細を記入してください]\n\n';
+
+    // mailto リンクを生成
+    const mailtoLink = `mailto:${toEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+    // メールクライアントを開く
+    window.location.href = mailtoLink;
+}
+
+// 最終在高を計算してオブジェクトとして返す（メール報告用）
+function calculateFinalBalanceObject(initialReg, depositsByDenom, withdrawalsByDenom, currentReg = null) {
+    const finalReg = {};
+
+    // 紙幣
+    finalReg.bills10000 = initialReg.bills10000 + (depositsByDenom[10000] || 0) - (withdrawalsByDenom[10000] || 0);
+    finalReg.bills5000 = initialReg.bills5000 + (depositsByDenom[5000] || 0) - (withdrawalsByDenom[5000] || 0);
+    finalReg.bills1000 = initialReg.bills1000 + (depositsByDenom[1000] || 0) - (withdrawalsByDenom[1000] || 0);
+
+    // 硬貨
+    finalReg.coins500 = initialReg.coins500 + (depositsByDenom[500] || 0) - (withdrawalsByDenom[500] || 0);
+    finalReg.coins100 = initialReg.coins100 + (depositsByDenom[100] || 0) - (withdrawalsByDenom[100] || 0);
+    finalReg.coins50 = initialReg.coins50 + (depositsByDenom[50] || 0) - (withdrawalsByDenom[50] || 0);
+    finalReg.coins10 = initialReg.coins10 + (depositsByDenom[10] || 0) - (withdrawalsByDenom[10] || 0);
+    finalReg.coins5 = initialReg.coins5 + (depositsByDenom[5] || 0) - (withdrawalsByDenom[5] || 0);
+    finalReg.coins1 = initialReg.coins1 + (depositsByDenom[1] || 0) - (withdrawalsByDenom[1] || 0);
+
+    // 棒金 (422レジのみ)
+    if (initialReg.rolls500 !== undefined) {
+        if (currentReg && currentReg.rolls500 !== undefined) {
+            finalReg.rolls500 = currentReg.rolls500;
+            finalReg.rolls100 = currentReg.rolls100;
+            finalReg.rolls50 = currentReg.rolls50;
+            finalReg.rolls10 = currentReg.rolls10;
+            finalReg.rolls5 = currentReg.rolls5;
+            finalReg.rolls1 = currentReg.rolls1;
+        } else {
+            finalReg.rolls500 = initialReg.rolls500;
+            finalReg.rolls100 = initialReg.rolls100;
+            finalReg.rolls50 = initialReg.rolls50;
+            finalReg.rolls10 = initialReg.rolls10;
+            finalReg.rolls5 = initialReg.rolls5;
+            finalReg.rolls1 = initialReg.rolls1;
+        }
+        finalReg.hasRolls = true;
+    }
+
+    return finalReg;
+}
+
+// 在高をフォーマット
+function formatInventory(reg, hasRolls) {
+    let text = '【紙幣】\n';
+    text += `  10000円札: ${reg.bills10000}枚\n`;
+    text += `  5000円札: ${reg.bills5000}枚\n`;
+    text += `  1000円札: ${reg.bills1000}枚\n`;
+    text += '【硬貨】\n';
+    text += `  500円: ${reg.coins500}枚\n`;
+    text += `  100円: ${reg.coins100}枚\n`;
+    text += `  50円: ${reg.coins50}枚\n`;
+    text += `  10円: ${reg.coins10}枚\n`;
+    text += `  5円: ${reg.coins5}枚\n`;
+    text += `  1円: ${reg.coins1}枚\n`;
+
+    if (hasRolls) {
+        text += '【棒金】\n';
+        text += `  500円: ${reg.rolls500}本\n`;
+        text += `  100円: ${reg.rolls100}本\n`;
+        text += `  50円: ${reg.rolls50}本\n`;
+        text += `  10円: ${reg.rolls10}本\n`;
+        text += `  5円: ${reg.rolls5}本\n`;
+        text += `  1円: ${reg.rolls1}本\n`;
+    }
+
+    return text;
+}
+
+// 最終在高をフォーマット
+function formatFinalBalance(balance) {
+    let text = '【紙幣】\n';
+    text += `  10000円札: ${balance.bills10000}枚\n`;
+    text += `  5000円札: ${balance.bills5000}枚\n`;
+    text += `  1000円札: ${balance.bills1000}枚\n`;
+    text += '【硬貨（バラ）】\n';
+    text += `  500円: ${balance.coins500}枚\n`;
+    text += `  100円: ${balance.coins100}枚\n`;
+    text += `  50円: ${balance.coins50}枚\n`;
+    text += `  10円: ${balance.coins10}枚\n`;
+    text += `  5円: ${balance.coins5}枚\n`;
+    text += `  1円: ${balance.coins1}枚\n`;
+
+    if (balance.hasRolls) {
+        text += '【棒金】\n';
+        text += `  500円: ${balance.rolls500}本\n`;
+        text += `  100円: ${balance.rolls100}本\n`;
+        text += `  50円: ${balance.rolls50}本\n`;
+        text += `  10円: ${balance.rolls10}本\n`;
+        text += `  5円: ${balance.rolls5}本\n`;
+        text += `  1円: ${balance.rolls1}本\n`;
+    }
+
+    return text;
+}

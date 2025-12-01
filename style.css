@@ -228,6 +228,39 @@ button {
     background: #138496;
 }
 
+.btn-report {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    color: white;
+    padding: 12px 30px;
+    font-size: 1rem;
+    font-weight: bold;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(245, 87, 108, 0.3);
+}
+
+.btn-report:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(245, 87, 108, 0.4);
+}
+
+.report-section {
+    margin-top: 30px;
+    padding: 20px;
+    background: linear-gradient(135deg, #fff5f5 0%, #ffe6e9 100%);
+    border-radius: 10px;
+    border: 2px solid #f5576c;
+    text-align: center;
+}
+
+.report-description {
+    margin-top: 10px;
+    font-size: 0.9rem;
+    color: #6c757d;
+}
+
 .result-area {
     margin-top: 30px;
     padding: 25px;
