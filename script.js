@@ -2317,6 +2317,41 @@ function formatFinalBalance(balance) {
 // 画像アップロード・自動入力機能
 // ========================================
 
+// 画像を圧縮する関数
+function compressImage(file, maxWidth = 1024, quality = 0.8) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+
+                // 幅が maxWidth より大きい場合は縮小
+                if (width > maxWidth) {
+                    height = (height * maxWidth) / width;
+                    width = maxWidth;
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+
+                canvas.toBlob((blob) => {
+                    resolve(blob);
+                }, 'image/jpeg', quality);
+            };
+            img.onerror = reject;
+            img.src = e.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
 async function uploadImage(input, registerNumber) {
     const file = input.files[0];
     if (!file) return;
@@ -2325,10 +2360,13 @@ async function uploadImage(input, registerNumber) {
     const loadingMsg = document.getElementById(`loadingMsg${registerNumber}`);
     loadingMsg.style.display = 'block';
 
-    const formData = new FormData();
-    formData.append("file", file);
-
     try {
+        // 画像を圧縮（最大幅1024px、品質0.8）
+        const compressedBlob = await compressImage(file, 1024, 0.8);
+        console.log(`元のサイズ: ${(file.size / 1024 / 1024).toFixed(2)}MB → 圧縮後: ${(compressedBlob.size / 1024 / 1024).toFixed(2)}MB`);
+
+        const formData = new FormData();
+        formData.append("file", compressedBlob, "image.jpg");
         // Pythonバックエンドへ画像を送信
         const res = await fetch("/api/analyze", { method: "POST", body: formData });
 
