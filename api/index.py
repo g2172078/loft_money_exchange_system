@@ -22,7 +22,7 @@ async def analyze_image(file: UploadFile = File(...)):
         image = Image.open(io.BytesIO(content))
 
         # Geminiへの指示（画像から枚数を読み取る）
-        model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        model = genai.GenerativeModel('gemini-1.5-flash')
         prompt = """
         釣銭機の画面画像から各金種の枚数を読み取り、JSONで出力してください。
         画像には以下のような金種が表示されています：
