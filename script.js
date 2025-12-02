@@ -2331,7 +2331,19 @@ async function uploadImage(input, registerNumber) {
     try {
         // Pythonバックエンドへ画像を送信
         const res = await fetch("/api/analyze", { method: "POST", body: formData });
-        const data = await res.json();
+
+        // レスポンスをテキストとして取得（デバッグ用）
+        const rawText = await res.text();
+        console.log("サーバーレスポンス:", rawText);
+
+        // JSONとしてパース
+        let data;
+        try {
+            data = JSON.parse(rawText);
+        } catch (parseError) {
+            alert("JSONパースエラー:\n" + parseError.message + "\n\n受信データ:\n" + rawText.substring(0, 200));
+            return;
+        }
 
         if (data.error) {
             alert("エラー: " + data.error);
