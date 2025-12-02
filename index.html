@@ -22,7 +22,17 @@
                         <span class="total-amount" id="total-coins-422">硬貨: ¥0</span>
                     </div>
                 </div>
-                
+
+                <div style="margin: 15px 0; text-align: center; padding: 10px; background: #f0f8ff; border-radius: 8px;">
+                    <button type="button" onclick="document.getElementById('cameraInput422').click()"
+                            style="padding: 12px 24px; font-size: 16px; background: #0070f3; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">
+                        📷 写真から自動入力
+                    </button>
+                    <input type="file" id="cameraInput422" accept="image/*" capture="environment"
+                           style="display: none;" onchange="uploadImage(this, '422')">
+                    <p id="loadingMsg422" style="display:none; color: #666; margin-top:8px; font-size: 13px;">AI解析中...お待ちください</p>
+                </div>
+
                 <div class="denomination-group">
                     <h3>紙幣</h3>
                     <div class="denomination-row">
@@ -194,7 +204,17 @@
                         <span class="total-amount" id="total-coins-423">硬貨: ¥0</span>
                     </div>
                 </div>
-                
+
+                <div style="margin: 15px 0; text-align: center; padding: 10px; background: #f0f8ff; border-radius: 8px;">
+                    <button type="button" onclick="document.getElementById('cameraInput423').click()"
+                            style="padding: 12px 24px; font-size: 16px; background: #0070f3; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">
+                        📷 写真から自動入力
+                    </button>
+                    <input type="file" id="cameraInput423" accept="image/*" capture="environment"
+                           style="display: none;" onchange="uploadImage(this, '423')">
+                    <p id="loadingMsg423" style="display:none; color: #666; margin-top:8px; font-size: 13px;">AI解析中...お待ちください</p>
+                </div>
+
                 <div class="denomination-group">
                     <h3>紙幣</h3>
                     <div class="denomination-row">

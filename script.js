@@ -2312,3 +2312,62 @@ function formatFinalBalance(balance) {
 
     return text;
 }
+
+// ========================================
+// 画像アップロード・自動入力機能
+// ========================================
+
+async function uploadImage(input, registerNumber) {
+    const file = input.files[0];
+    if (!file) return;
+
+    // ローディング表示
+    const loadingMsg = document.getElementById(`loadingMsg${registerNumber}`);
+    loadingMsg.style.display = 'block';
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+        // Pythonバックエンドへ画像を送信
+        const res = await fetch("/api/analyze", { method: "POST", body: formData });
+        const data = await res.json();
+
+        if (data.error) {
+            alert("エラー: " + data.error);
+        } else {
+            // 自動入力処理
+            const denominations = {
+                "10000": `reg${registerNumber}-bills-10000`,
+                "5000": `reg${registerNumber}-bills-5000`,
+                "1000": `reg${registerNumber}-bills-1000`,
+                "500": `reg${registerNumber}-coins-500`,
+                "100": `reg${registerNumber}-coins-100`,
+                "50": `reg${registerNumber}-coins-50`,
+                "10": `reg${registerNumber}-coins-10`,
+                "5": `reg${registerNumber}-coins-5`,
+                "1": `reg${registerNumber}-coins-1`
+            };
+
+            // 各入力欄に値を設定
+            for (const [key, elementId] of Object.entries(denominations)) {
+                const el = document.getElementById(elementId);
+                if (el && data[key] !== undefined) {
+                    el.value = data[key];
+                    el.style.backgroundColor = "#e8f0fe"; // 色を変えて分かりやすく
+
+                    // inputイベントを発火して小計を更新
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            }
+
+            alert("読み取り完了！\n数字が正しいか必ず目視で確認してください。");
+        }
+    } catch (e) {
+        console.error(e);
+        alert("通信エラーが発生しました: " + e.message);
+    } finally {
+        loadingMsg.style.display = 'none';
+        input.value = ""; // リセット
+    }
+}
