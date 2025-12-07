@@ -190,8 +190,22 @@ class CashExchangeOptimizer {
                     info: `LC合計: ¥${coinCheckResult.totalLC.toLocaleString()}, 硬貨合計: ¥${coinCheckResult.finalCoinsTotal.toLocaleString()}`
                 });
 
-                // 422レジ用の両替機処理を実行
-                this.process422ExchangeMachine(coinCheckResult.LC, coinCheckResult.totalLC);
+                // 422レジ用の両替機処理を実行（入金情報を保存）
+                const deposit422Info = this.process422ExchangeMachine(coinCheckResult.LC, coinCheckResult.totalLC);
+
+                // 422レジへ入金
+                if (deposit422Info) {
+                    this.reg422Deposits += deposit422Info.withdrawalAmount;
+                    this.trackDeposit(422, deposit422Info.machineWithdrawalCounts);
+                    this.exchangeSteps.push({
+                        step: this.exchangeSteps.length + 1,
+                        action: '💰 422レジへ入金',
+                        details: deposit422Info.machineWithdrawal,
+                        total: deposit422Info.withdrawalAmount,
+                        info: `両替機からの出金を422レジへ入金`,
+                        isUserAction: true
+                    });
+                }
             } else {
                 this.exchangeSteps.push({
                     step: this.exchangeSteps.length + 1,
@@ -221,6 +235,7 @@ class CashExchangeOptimizer {
     // 出金を追跡（金種別）
     trackWithdrawal(register, details) {
         const trackingMap = register === 422 ? this.reg422WithdrawalsByDenom : this.reg423WithdrawalsByDenom;
+        const regObj = register === 422 ? this.reg422 : this.reg423;
 
         for (const [denom, count] of Object.entries(details)) {
             const denomNum = parseInt(denom);
@@ -228,12 +243,47 @@ class CashExchangeOptimizer {
                 trackingMap[denomNum] = 0;
             }
             trackingMap[denomNum] += count;
+
+            // 実際のレジスタ残高を更新
+            if (denomNum >= 1000) {
+                // 紙幣
+                if (denomNum === 10000) {
+                    regObj.bills10000 -= count;
+                } else if (denomNum === 5000) {
+                    regObj.bills5000 -= count;
+                } else if (denomNum === 1000) {
+                    regObj.bills1000 -= count;
+                }
+            } else {
+                // 硬貨：バラから優先的に出金
+                const currentCoins = regObj.getCoinCount(denomNum);
+                if (currentCoins >= count) {
+                    // バラで足りる場合
+                    regObj.setCoinCount(denomNum, currentCoins - count);
+                } else {
+                    // バラで足りない場合は棒金を崩す
+                    const shortage = count - currentCoins;
+                    const rollsNeeded = Math.ceil(shortage / 50);
+                    const currentRolls = regObj.getRollCount(denomNum);
+
+                    if (currentRolls >= rollsNeeded) {
+                        // 棒金を崩してバラにする
+                        regObj.setRollCount(denomNum, currentRolls - rollsNeeded);
+                        const newCoins = currentCoins + (rollsNeeded * 50) - count;
+                        regObj.setCoinCount(denomNum, newCoins);
+                    } else {
+                        // 在庫不足（エラー）
+                        console.error(`${denomNum}円の在庫不足: 必要${count}枚、在庫${currentCoins + currentRolls * 50}枚`);
+                    }
+                }
+            }
         }
     }
 
     // 入金を追跡（金種別）
     trackDeposit(register, details) {
         const trackingMap = register === 422 ? this.reg422DepositsByDenom : this.reg423DepositsByDenom;
+        const regObj = register === 422 ? this.reg422 : this.reg423;
 
         for (const [denom, count] of Object.entries(details)) {
             const denomNum = parseInt(denom);
@@ -241,6 +291,22 @@ class CashExchangeOptimizer {
                 trackingMap[denomNum] = 0;
             }
             trackingMap[denomNum] += count;
+
+            // 実際のレジスタ残高を更新
+            if (denomNum >= 1000) {
+                // 紙幣
+                if (denomNum === 10000) {
+                    regObj.bills10000 += count;
+                } else if (denomNum === 5000) {
+                    regObj.bills5000 += count;
+                } else if (denomNum === 1000) {
+                    regObj.bills1000 += count;
+                }
+            } else {
+                // 硬貨：バラとして入金
+                const currentCoins = regObj.getCoinCount(denomNum);
+                regObj.setCoinCount(denomNum, currentCoins + count);
+            }
         }
     }
 
@@ -612,6 +678,7 @@ class CashExchangeOptimizer {
                     // 422レジの両替機利用（LC）を分析
                     const { LC, totalLC } = this.analyze422ExchangeMachineNeeds({});
 
+                    let deposit422Info = null;
                     if (Object.keys(LC).length > 0 && totalLC > 0) {
                         // 硬貨合計チェックと再計算
                         const coinCheckResult = this.check422CoinsTotal(LC, totalLC);
@@ -625,12 +692,40 @@ class CashExchangeOptimizer {
                             info: `LC合計: ¥${coinCheckResult.totalLC.toLocaleString()}, 硬貨合計: ¥${coinCheckResult.finalCoinsTotal.toLocaleString()}`
                         });
 
-                        // 422レジ用の両替機処理を実行
-                        this.process422ExchangeMachine(coinCheckResult.LC, coinCheckResult.totalLC);
+                        // 422レジ用の両替機処理を実行（入金情報を保存）
+                        deposit422Info = this.process422ExchangeMachine(coinCheckResult.LC, coinCheckResult.totalLC);
                     }
 
-                    // 423レジの両替機処理を実行
-                    this.processExchangeMachine(finalLB, lbResult.withdrawalAmount);
+                    // 423レジの両替機処理を実行（入金情報を保存）
+                    const deposit423Info = this.processExchangeMachine(finalLB, lbResult.withdrawalAmount);
+
+                    // 422レジへ入金（両替機処理の後）
+                    if (deposit422Info) {
+                        this.reg422Deposits += deposit422Info.withdrawalAmount;
+                        this.trackDeposit(422, deposit422Info.machineWithdrawalCounts);
+                        this.exchangeSteps.push({
+                            step: this.exchangeSteps.length + 1,
+                            action: '💰 422レジへ入金',
+                            details: deposit422Info.machineWithdrawal,
+                            total: deposit422Info.withdrawalAmount,
+                            info: `両替機からの出金を422レジへ入金`,
+                            isUserAction: true
+                        });
+                    }
+
+                    // 423レジへ入金（422レジの後）
+                    if (deposit423Info) {
+                        this.reg423Deposits += deposit423Info.withdrawalAmount;
+                        this.trackDeposit(423, deposit423Info.machineWithdrawal);
+                        this.exchangeSteps.push({
+                            step: this.exchangeSteps.length + 1,
+                            action: '💰 423レジへ入金',
+                            details: deposit423Info.machineWithdrawal,
+                            total: deposit423Info.withdrawalAmount,
+                            info: `両替機からの出金を423レジへ入金`,
+                            isUserAction: true
+                        });
+                    }
                 } else {
                     this.exchangeSteps.push({
                         step: this.exchangeSteps.length + 1,
@@ -785,24 +880,26 @@ class CashExchangeOptimizer {
                         if (afterMoveCoins <= 10 && this.reg422.getRollCount(denom) > 0) {
                             // 棒金を崩す指示を追加
                             const breakDetails = {};
-                            breakDetails[denom] = `バラ${currentCoins}枚 → LA移動${count}枚 → 残${afterMoveCoins}枚 (棒金1本を崩す)`;
+                            breakDetails[denom] = `422レジの${denom}円棒金を1本崩してください`;
                             this.exchangeSteps.push({
                                 step: this.exchangeSteps.length + 1,
                                 action: '🗞️ 422レジ LA移動前の棒金崩し',
                                 details: breakDetails,
                                 total: null,
-                                info: `422レジから423レジへ${denom}円硬貨を${count}枚移動する前に、422レジの${denom}円棒金を1本崩してください`,
+                                info: `422レジの${denom}円棒金を1本崩してください`,
                                 isUserAction: true
                             });
 
-                            // データ更新：棒金を崩す
+                            // データ更新：棒金を崩す（棒金-1本、バラ+50枚）
                             this.reg422.setCoinCount(denom, currentCoins + 50);
                             this.reg422.setRollCount(denom, this.reg422.getRollCount(denom) - 1);
 
-                            // 棒金を崩した分をバラ硬貨の入金として記録
-                            const rollBreakDeposit = {};
-                            rollBreakDeposit[denom] = 50;
-                            this.trackDeposit(422, rollBreakDeposit);
+                            // 入金追跡マップを更新（レジスタ残高は上で更新済みなので、追跡のみ）
+                            // 注：trackDeposit()を使うとレジスタ残高が二重更新されるため、ここでは手動更新
+                            if (!this.reg422DepositsByDenom[denom]) {
+                                this.reg422DepositsByDenom[denom] = 0;
+                            }
+                            this.reg422DepositsByDenom[denom] += 50;
                         }
                     }
                 }
@@ -852,6 +949,7 @@ class CashExchangeOptimizer {
                 // 6. 422レジの両替機利用（LC）を分析
                 const { LC, totalLC } = this.analyze422ExchangeMachineNeeds(LA);
 
+                let deposit422Info = null;
                 if (Object.keys(LC).length > 0 && totalLC > 0) {
                     // 硬貨合計チェックと再計算
                     const coinCheckResult = this.check422CoinsTotal(LC, totalLC);
@@ -865,19 +963,48 @@ class CashExchangeOptimizer {
                         info: `LC合計: ¥${coinCheckResult.totalLC.toLocaleString()}, 硬貨合計: ¥${coinCheckResult.finalCoinsTotal.toLocaleString()}`
                     });
 
-                    // 422レジ用の両替機処理を実行
-                    this.process422ExchangeMachine(coinCheckResult.LC, coinCheckResult.totalLC);
+                    // 422レジ用の両替機処理を実行（入金情報を保存）
+                    deposit422Info = this.process422ExchangeMachine(coinCheckResult.LC, coinCheckResult.totalLC);
                 }
 
-                // 7. おつり返却処理（422レジのLC処理完了後）
+                // 8. LBがある場合は423レジの両替機処理を実行（入金情報を保存）
+                let deposit423Info = null;
+                if (Object.keys(finalLB).length > 0) {
+                    deposit423Info = this.processExchangeMachine(finalLB, lbWithdrawalAmount);
+                }
+
+                // 9. 422レジへ入金（両替機処理の後）
+                if (deposit422Info) {
+                    this.reg422Deposits += deposit422Info.withdrawalAmount;
+                    this.trackDeposit(422, deposit422Info.machineWithdrawalCounts);
+                    this.exchangeSteps.push({
+                        step: this.exchangeSteps.length + 1,
+                        action: '💰 422レジへ入金',
+                        details: deposit422Info.machineWithdrawal,
+                        total: deposit422Info.withdrawalAmount,
+                        info: `両替機からの出金を422レジへ入金`,
+                        isUserAction: true
+                    });
+                }
+
+                // 10. おつり返却処理（422レジへの入金後）
                 if (combination.amount > totalLA) {
                     const changeAmount = combination.amount - totalLA;
                     this.returnChangeFrom422To423(changeAmount);
                 }
 
-                // 8. LBがある場合は423レジの両替機処理を実行
-                if (Object.keys(finalLB).length > 0) {
-                    this.processExchangeMachine(finalLB, lbWithdrawalAmount);
+                // 11. 423レジへ入金（おつり返却の後）
+                if (deposit423Info) {
+                    this.reg423Deposits += deposit423Info.withdrawalAmount;
+                    this.trackDeposit(423, deposit423Info.machineWithdrawal);
+                    this.exchangeSteps.push({
+                        step: this.exchangeSteps.length + 1,
+                        action: '💰 423レジへ入金',
+                        details: deposit423Info.machineWithdrawal,
+                        total: deposit423Info.withdrawalAmount,
+                        info: `両替機からの出金を423レジへ入金`,
+                        isUserAction: true
+                    });
                 }
 
                 result423.combination = combination;
@@ -1263,8 +1390,9 @@ class CashExchangeOptimizer {
             return;
         }
 
-        // 棒金の上限チェック
+        // 棒金の上限チェックと特別ルールの情報表示
         const warnings = [];
+        const specialRuleInfo = [];
         const coinDenoms = [500, 100, 50, 10, 5, 1];
 
         for (const denom of coinDenoms) {
@@ -1275,12 +1403,34 @@ class CashExchangeOptimizer {
 
                 const maxRolls = (denom === 500 || denom === 50 || denom === 5) ? MAX_ROLLS_500 : MAX_ROLLS_100;
 
+                // 500円の特別ルール：バラが30枚未満の場合は3本まで許可
+                if (denom === 500 && totalRolls === 3) {
+                    const current500Coins = this.reg422.getCoinCount(500);
+                    if (current500Coins < 30) {
+                        // 特別ルール適用：警告ではなく情報として表示
+                        specialRuleInfo.push(`500円硬貨のバラが${current500Coins}枚のため、棒金を3本まで追加 (通常上限2本 → 特別ルール適用)`);
+                        continue; // 警告には追加しない
+                    }
+                }
+
                 if (totalRolls > maxRolls) {
                     warnings.push(`¥${denom}: 棒金上限超過 (現在${currentRolls}本 + 追加${addRolls}本 = ${totalRolls}本 > 上限${maxRolls}本)`);
                 }
             }
         }
 
+        // 特別ルール適用の情報表示
+        if (specialRuleInfo.length > 0) {
+            this.exchangeSteps.push({
+                step: this.exchangeSteps.length + 1,
+                action: 'ℹ️ 棒金追加（特別ルール）',
+                details: specialRuleInfo.reduce((acc, info, i) => ({ ...acc, [i + 1]: info }), {}),
+                total: null,
+                info: '500円バラ不足のため、通常上限を超えて棒金を追加します'
+            });
+        }
+
+        // 上限超過の警告表示
         if (warnings.length > 0) {
             this.exchangeSteps.push({
                 step: this.exchangeSteps.length + 1,
@@ -1403,16 +1553,12 @@ class CashExchangeOptimizer {
             isUserAction: true
         });
 
-        this.reg422Deposits += withdrawalAmount;
-        this.trackDeposit(422, machineWithdrawalCounts); // 数値で追跡
-        this.exchangeSteps.push({
-            step: this.exchangeSteps.length + 1,
-            action: '💰 422レジへ入金',
-            details: machineWithdrawal, // 表示は文字列形式
-            total: withdrawalAmount,
-            info: `両替機からの出金を422レジへ入金`,
-            isUserAction: true
-        });
+        // 入金情報を返す（後で入金処理を実行するため）
+        return {
+            withdrawalAmount: withdrawalAmount,
+            machineWithdrawalCounts: machineWithdrawalCounts,
+            machineWithdrawal: machineWithdrawal
+        };
     }
 
     // 両替機を使用してLB金種を両替（423レジ用）
@@ -1497,16 +1643,11 @@ class CashExchangeOptimizer {
             isUserAction: true
         });
 
-        this.reg423Deposits += withdrawalAmount;
-        this.trackDeposit(423, machineWithdrawal);
-        this.exchangeSteps.push({
-            step: this.exchangeSteps.length + 1,
-            action: '💰 423レジへ入金',
-            details: machineWithdrawal,
-            total: withdrawalAmount,
-            info: `両替機からの出金を423レジへ入金`,
-            isUserAction: true
-        });
+        // 入金情報を返す（後で入金処理を実行するため）
+        return {
+            withdrawalAmount: withdrawalAmount,
+            machineWithdrawal: machineWithdrawal
+        };
     }
 
     // おつりを計算（5000円以下、大きい額面優先）
